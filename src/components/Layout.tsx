@@ -1,9 +1,10 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
 const tabs = [
-  { path: '/record', label: '记账', icon: '✏️' },
-  { path: '/bills',  label: '账单', icon: '📋' },
-  { path: '/chart',  label: '图表', icon: '📊' },
+  { path: '/record',   label: '记账', icon: '✏️' },
+  { path: '/bills',    label: '账单', icon: '📋' },
+  { path: '/chart',    label: '图表', icon: '📊' },
+  { path: '/accounts', label: '资产', icon: '💼' },
 ]
 
 export default function Layout() {
@@ -14,7 +15,6 @@ export default function Layout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
-
       <nav className="flex border-t border-gray-100 bg-white pb-3 pt-1">
         {tabs.map(tab => {
           const active = location.pathname.startsWith(tab.path)

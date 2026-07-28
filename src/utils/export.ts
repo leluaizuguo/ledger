@@ -25,6 +25,7 @@ export function importJSON(file: File): Promise<number> {
             amount: b.amount,
             type: b.type,
             categoryId: b.categoryId,
+            accountId: b.accountId || 'cash',
             note: b.note || '',
             date: b.date,
             createdAt: Date.now(),
