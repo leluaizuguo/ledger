@@ -3,27 +3,64 @@ export interface Bill {
   amount: number
   type: 'expense' | 'income' | 'transfer_out' | 'transfer_in'
   categoryId: string
-  accountId: string         // 新增：关联账户
-  targetAccountId?: string  // 转账目标账户
+  accountId: string
+  targetAccountId?: string
   note: string
   date: string
   createdAt: number
+  isReimbursable?: boolean  // V3
+  reimbursed?: boolean      // V3
+  installmentId?: number    // V3: 关联分期
 }
 
 export interface Account {
-  id: string                // 如 'cash', 'bank'
-  name: string              // 如 '现金', '储蓄卡'
-  icon: string              // emoji
+  id: string
+  name: string
+  icon: string
   type: 'cash' | 'bank' | 'credit' | 'ewallet' | 'invest'
-  balance: number           // 余额（分）
+  balance: number
   createdAt: number
 }
 
 export interface Budget {
   id?: number
-  month: string             // '2026-07'
-  categoryId: string | null // null = 总预算
-  amount: number            // 预算金额（分）
+  month: string
+  categoryId: string | null
+  amount: number
+}
+
+// V3 新增
+export interface BillTemplate {
+  id?: number
+  name: string
+  amount: number
+  type: 'expense' | 'income'
+  categoryId: string
+  accountId: string
+  note: string
+}
+
+export interface RecurringBill {
+  id?: number
+  name: string
+  amount: number
+  type: 'expense' | 'income'
+  categoryId: string
+  accountId: string
+  dayOfMonth: number       // 每月几号
+  active: boolean
+  lastGenerated?: string   // 上次生成月份 '2026-07'
+}
+
+export interface Installment {
+  id?: number
+  billId: number           // 原始消费账单 ID
+  totalAmount: number
+  periods: number          // 总期数
+  periodAmount: number     // 每期金额
+  startMonth: string       // 首期月份
+  note: string
+  currentPeriod: number    // 已生成期数
 }
 
 export interface Category {
