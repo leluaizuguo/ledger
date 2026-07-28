@@ -1,57 +1,63 @@
-// 语音识别 — transformers.js Whisper 模型
-// 浏览器端运行，首次加载需下载模型（~150MB，走国内镜像）
+// 语音识别 — Web Speech API
+// Edge 走 Azure 中国直连，Chrome需要代理
 
-import { pipeline, env } from '@huggingface/transformers'
+type VoiceCallback = (text: string) => void
+type ErrorCallback = (err: string) => void
 
-// 国内 HuggingFace 镜像，避免被墙
-env.remoteHost = 'https://hf-mirror.com'
-env.allowLocalModels = false
+export function startListening(
+  lang: string,
+  onResult: VoiceCallback,
+  onError: ErrorCallback,
+  onEnd: () => void,
+): { stop: () => void } {
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
-let transcriber: any = null
-let loading = false
-
-async function getTranscriber() {
-  if (transcriber) return transcriber
-  if (loading) {
-    while (loading) await new Promise(r => setTimeout(r, 200))
-    return transcriber
+  if (!SpeechRecognition) {
+    onError('浏览器不支持语音识别，请使用 Edge 或 Chrome')
+    return { stop: () => {} }
   }
-  loading = true
-  try {
-    transcriber = await pipeline(
-      'automatic-speech-recognition',
-      'Xenova/whisper-tiny',
-      // @ts-ignore
-      { quantized: true }
-    )
-  } finally {
-    loading = false
+
+  const recognition = new SpeechRecognition()
+  recognition.lang = lang
+  recognition.interimResults = false
+  recognition.continuous = false
+  recognition.maxAlternatives = 1
+
+  recognition.onresult = (event: any) => {
+    const text = event.results[0][0].transcript
+    onResult(text)
   }
-  return transcriber
+
+  recognition.onerror = (event: any) => {
+    const msg = event.error === 'not-allowed'
+      ? '请允许麦克风权限'
+      : event.error === 'network'
+        ? '网络错误，请检查代理'
+        : `识别失败: ${event.error}`
+    onError(msg)
+  }
+
+  recognition.onend = () => onEnd()
+
+  recognition.start()
+
+  return { stop: () => recognition.stop() }
 }
 
-function recordAudio(ms: number): Promise<Blob> {
+// 兼容 recordAndRecognize 接口（Layout 中调用）
+// 返回 Promise，但实际通过 Web Speech 的流式回调处理
+export function recordAndRecognize(): Promise<string> {
   return new Promise((resolve, reject) => {
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' })
-      const chunks: Blob[] = []
-      mr.ondataavailable = e => chunks.push(e.data)
-      mr.onstop = () => {
-        stream.getTracks().forEach(t => t.stop())
-        resolve(new Blob(chunks, { type: 'audio/webm' }))
-      }
-      mr.start()
-      setTimeout(() => mr.stop(), ms)
-    }).catch(reject)
+    const { stop } = startListening(
+      'zh-CN',
+      (text) => resolve(text),
+      (err) => reject(new Error(err)),
+      () => {},
+    )
+    // 如果10秒没结果就超时
+    setTimeout(() => {
+      stop()
+      reject(new Error('识别超时'))
+    }, 10000)
   })
-}
-
-export async function recordAndRecognize(): Promise<string> {
-  const audioBlob = await recordAudio(5000)
-  const t = await getTranscriber()
-  const result = await t(audioBlob, {
-    language: 'zh',
-    task: 'transcribe',
-  })
-  return (result as any).text || ''
 }
