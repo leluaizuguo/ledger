@@ -52,11 +52,18 @@ export default function ChartPage() {
           percent: totalExpense > 0 ? (amount / totalExpense * 100) : 0 }
       })
       .sort((a, b) => b.amount - a.amount)
-    return { totalExpense, totalIncome, balance: totalIncome - totalExpense, breakdown }
+    return { totalExpense, totalIncome, balance: totalIncome - totalExpense, breakdown,
+      dailyAvg: totalExpense / Math.max(new Date().getDate(), 1),
+    }
   }, [bills, expenseCategories])
 
   const pieData = stats.breakdown.map(b => ({ name: b.name, value: b.amount / 100 }))
   const budgetPercent = budget && budget > 0 ? Math.min(stats.totalExpense / budget * 100, 100) : 0
+
+  // 环比变化
+  const momChange = trendData.length >= 2
+    ? (trendData[trendData.length - 1].expense - trendData[trendData.length - 2].expense) / Math.max(trendData[trendData.length - 2].expense, 1) * 100
+    : 0
 
   return (
     <div className="flex flex-col h-full overflow-auto pb-4">
@@ -69,6 +76,12 @@ export default function ChartPage() {
         <div className="flex justify-center gap-6 mt-2 text-sm">
           <span>收入 <span className="text-green-500 font-semibold">¥{(stats.totalIncome / 100).toFixed(2)}</span></span>
           <span>支出 <span className="text-red-500 font-semibold">¥{(stats.totalExpense / 100).toFixed(2)}</span></span>
+        </div>
+        <div className="text-xs text-gray-400 mt-1">
+          日均支出 ¥{(stats.dailyAvg / 100).toFixed(2)}
+          {trendData.length >= 2 && (
+            <span className={momChange > 0 ? 'text-red-400' : 'text-green-400'}> · 环比 {momChange > 0 ? '+' : ''}{momChange.toFixed(0)}%</span>
+          )}
         </div>
       </div>
 

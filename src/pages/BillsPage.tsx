@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useStore } from '../store/useStore'
 import BillItem from '../components/BillItem'
 import { getMonthKey } from '../utils/format'
-import { exportJSON, importJSON } from '../utils/export'
+import { exportJSON, importJSON, exportCSV } from '../utils/export'
 
 export default function BillsPage() {
   const { bills, currentMonth, loadBills, setCurrentMonth, searchQuery, setSearchQuery } = useStore()
@@ -27,7 +27,9 @@ export default function BillsPage() {
             onChange={e => setCurrentMonth(e.target.value)}
             className="text-lg font-bold bg-transparent outline-none flex-1" />
           <button onClick={exportJSON}
-            className="text-xs text-yellow-600 px-3 py-1 rounded-full bg-yellow-50 active:bg-yellow-100">导出</button>
+            className="text-xs text-yellow-600 px-3 py-1 rounded-full bg-yellow-50 active:bg-yellow-100">JSON</button>
+          <button onClick={exportCSV}
+            className="text-xs text-green-600 px-3 py-1 rounded-full bg-green-50 active:bg-green-100">CSV</button>
           <label className="text-xs text-gray-500 px-3 py-1 rounded-full bg-gray-50 active:bg-gray-100 cursor-pointer">
             导入
             <input type="file" accept=".json" className="hidden"
