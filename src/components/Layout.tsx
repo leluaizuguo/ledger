@@ -64,26 +64,15 @@ export default function Layout() {
       {/* 顶部栏 */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-100 shrink-0">
         <span className="text-sm font-medium text-gray-500">记账</span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleVoice}
-            disabled={isListening}
-            className={`w-9 h-9 rounded-full flex items-center justify-center text-lg transition-all ${
-              isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 text-gray-500 active:bg-yellow-100'
-            }`}
-          >
-            🎤
-          </button>
-          <button
-            onClick={() => {
-              setApiKeyInput(hasApiKey() ? '••••••••' : '')
-              setShowSettings(true)
-            }}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-sm bg-gray-100 text-gray-400 active:bg-gray-200"
-          >
-            ⚙️
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            setApiKeyInput(hasApiKey() ? '••••••••' : '')
+            setShowSettings(true)
+          }}
+          className="w-9 h-9 rounded-full flex items-center justify-center text-sm bg-gray-100 text-gray-400 active:bg-gray-200"
+        >
+          ⚙️
+        </button>
       </header>
 
       {/* 语音状态提示 */}
@@ -131,8 +120,36 @@ export default function Layout() {
         <Outlet />
       </div>
       <nav className="flex border-t border-gray-100 bg-white pb-3 pt-1 shrink-0">
-        {tabs.map(tab => {
+        {tabs.map((tab, i) => {
           const active = location.pathname.startsWith(tab.path)
+          // 在账单和图表之间插入话筒
+          if (tab.path === '/chart') {
+            return (
+              <>
+                <button
+                  key="voice"
+                  onClick={handleVoice}
+                  disabled={isListening}
+                  className={`flex-1 flex flex-col items-center py-1 text-xs gap-0.5 ${
+                    isListening ? 'text-red-500' : 'text-gray-400'
+                  }`}
+                >
+                  <span className="text-xl">{isListening ? '🔴' : '🎤'}</span>
+                  <span>语音</span>
+                </button>
+                <NavLink
+                  key={tab.path}
+                  to={tab.path}
+                  className={`flex-1 flex flex-col items-center py-1 text-xs gap-0.5 ${
+                    active ? 'text-yellow-500' : 'text-gray-400'
+                  }`}
+                >
+                  <span className="text-xl">{tab.icon}</span>
+                  <span>{tab.label}</span>
+                </NavLink>
+              </>
+            )
+          }
           return (
             <NavLink
               key={tab.path}
