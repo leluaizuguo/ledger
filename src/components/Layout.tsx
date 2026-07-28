@@ -98,6 +98,7 @@ export default function Layout() {
           )
         })}
       </nav>
+      <div className="text-center text-xs text-gray-300 pb-1 shrink-0">v{__APP_VERSION__}</div>
     </div>
   )
 }
