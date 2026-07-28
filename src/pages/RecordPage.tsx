@@ -4,6 +4,7 @@ import AmountInput from '../components/AmountInput'
 import CategoryGrid from '../components/CategoryGrid'
 import { getTodayISO } from '../utils/format'
 import { parseVoiceText, startSpeechRecognition } from '../utils/voice'
+import { recordAndRecognize, hasApiKey, setApiKey } from '../utils/volcengine'
 
 export default function RecordPage() {
   const { expenseCategories, incomeCategories, accounts, loadAccounts, addBillRecord,
@@ -50,44 +51,57 @@ export default function RecordPage() {
   }
 
   // 语音识别
-  const toggleVoice = () => {
+  const toggleVoice = async () => {
     if (isListening) {
       voiceStopRef.current?.stop()
       return
     }
 
+    // 检查 API Key
+    if (!hasApiKey()) {
+      const key = prompt('请输入火山引擎 API Key（在控制台获取）：')
+      if (!key) return
+      setApiKey(key)
+    }
+
     setIsListening(true)
     setVoiceText('正在听...')
 
-    voiceStopRef.current = startSpeechRecognition(
-      'zh-CN',
-      (text) => {
-        setVoiceText(text)
-        const allCats = [...expenseCategories, ...incomeCategories]
-        const result = parseVoiceText(text, allCats)
+    try {
+      const text = await recordAndRecognize()
+      setVoiceText(text)
+      const allCats = [...expenseCategories, ...incomeCategories]
+      const result = parseVoiceText(text, allCats)
 
-        if (result.amount) {
-          setAmountFen(result.amount)
-          setShowCategory(true)
-        }
-        if (result.categoryId) {
-          setCategoryId(result.categoryId)
-          setBillType(result.type)
-        }
-        if (result.note !== text) {
-          setNote(result.note)
-        } else {
+      if (result.amount) {
+        setAmountFen(result.amount)
+        setShowCategory(true)
+      }
+      if (result.categoryId) {
+        setCategoryId(result.categoryId)
+        setBillType(result.type)
+      }
+      setNote(text)
+    } catch (err: any) {
+      // 火山引擎失败，fallback 到浏览器语音
+      setVoiceText('豆包繁忙，切换本地识别...')
+      voiceStopRef.current = startSpeechRecognition(
+        'zh-CN',
+        (text) => {
+          setVoiceText(text)
+          const allCats = [...expenseCategories, ...incomeCategories]
+          const result = parseVoiceText(text, allCats)
+          if (result.amount) { setAmountFen(result.amount); setShowCategory(true) }
+          if (result.categoryId) { setCategoryId(result.categoryId); setBillType(result.type) }
           setNote(text)
-        }
-      },
-      (error) => {
-        setVoiceText(error)
-        setIsListening(false)
-      },
-      () => {
-        setIsListening(false)
-      },
-    )
+        },
+        (error) => { setVoiceText(error); setIsListening(false) },
+        () => setIsListening(false),
+      )
+      return
+    }
+
+    setIsListening(false)
   }
 
   return (
