@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useStore } from '../store/useStore'
 import AmountInput from '../components/AmountInput'
 import CategoryGrid from '../components/CategoryGrid'
 import { getTodayISO } from '../utils/format'
+import { parseVoiceText, startSpeechRecognition } from '../utils/voice'
 
 export default function RecordPage() {
   const { expenseCategories, incomeCategories, accounts, loadAccounts, addBillRecord,
-    templates, loadTemplates, removeTemplate, addTemplate } = useStore()
+    templates, loadTemplates, addTemplate } = useStore()
   const [billType, setBillType] = useState<'expense' | 'income'>('expense')
   const [showCategory, setShowCategory] = useState(false)
   const [categoryId, setCategoryId] = useState<string | null>(null)
@@ -14,6 +15,9 @@ export default function RecordPage() {
   const [amountFen, setAmountFen] = useState(0)
   const [note, setNote] = useState('')
   const [isReimbursable, setIsReimbursable] = useState(false)
+  const [isListening, setIsListening] = useState(false)
+  const [voiceText, setVoiceText] = useState('')
+  const voiceStopRef = useRef<{ stop: () => void } | null>(null)
 
   const categories = billType === 'expense' ? expenseCategories : incomeCategories
 
@@ -21,18 +25,12 @@ export default function RecordPage() {
   useEffect(() => { setCategoryId(null) }, [billType])
 
   const applyTemplate = (tpl: typeof templates[0]) => {
-    setBillType(tpl.type)
-    setAmountFen(tpl.amount)
-    setCategoryId(tpl.categoryId)
-    setAccountId(tpl.accountId)
-    setNote(tpl.note)
-    setShowCategory(true)
+    setBillType(tpl.type); setAmountFen(tpl.amount)
+    setCategoryId(tpl.categoryId); setAccountId(tpl.accountId)
+    setNote(tpl.note); setShowCategory(true)
   }
 
-  const handleAmountConfirm = (fen: number) => {
-    setAmountFen(fen)
-    setShowCategory(true)
-  }
+  const handleAmountConfirm = (fen: number) => { setAmountFen(fen); setShowCategory(true) }
 
   const handleSubmit = async () => {
     if (!categoryId || amountFen === 0) return
@@ -41,7 +39,8 @@ export default function RecordPage() {
       note: note.trim() || categories.find(c => c.id === categoryId)?.name || '',
       date: getTodayISO(), isReimbursable,
     })
-    setShowCategory(false); setCategoryId(null); setAmountFen(0); setNote(''); setIsReimbursable(false)
+    setShowCategory(false); setCategoryId(null); setAmountFen(0)
+    setNote(''); setIsReimbursable(false); setVoiceText('')
   }
 
   const handleSaveAsTemplate = async () => {
@@ -50,16 +49,72 @@ export default function RecordPage() {
     await addTemplate({ name, amount: amountFen, type: billType, categoryId, accountId, note })
   }
 
+  // 语音识别
+  const toggleVoice = () => {
+    if (isListening) {
+      voiceStopRef.current?.stop()
+      return
+    }
+
+    setIsListening(true)
+    setVoiceText('正在听...')
+
+    voiceStopRef.current = startSpeechRecognition(
+      'zh-CN',
+      (text) => {
+        setVoiceText(text)
+        const allCats = [...expenseCategories, ...incomeCategories]
+        const result = parseVoiceText(text, allCats)
+
+        if (result.amount) {
+          setAmountFen(result.amount)
+          setShowCategory(true)
+        }
+        if (result.categoryId) {
+          setCategoryId(result.categoryId)
+          setBillType(result.type)
+        }
+        if (result.note !== text) {
+          setNote(result.note)
+        } else {
+          setNote(text)
+        }
+      },
+      (error) => {
+        setVoiceText(error)
+        setIsListening(false)
+      },
+      () => {
+        setIsListening(false)
+      },
+    )
+  }
+
   return (
     <div className="flex flex-col h-full">
       {!showCategory ? (
         <>
-          <div className="flex justify-center gap-2 pt-4">
+          <div className="flex justify-center items-center gap-2 pt-4">
             <button onClick={() => setBillType('expense')}
               className={`px-6 py-2 rounded-full font-medium transition-colors ${billType === 'expense' ? 'bg-yellow-400 text-black' : 'bg-gray-100 text-gray-500'}`}>支出</button>
             <button onClick={() => setBillType('income')}
               className={`px-6 py-2 rounded-full font-medium transition-colors ${billType === 'income' ? 'bg-yellow-400 text-black' : 'bg-gray-100 text-gray-500'}`}>收入</button>
+            {/* 语音按钮 */}
+            <button onClick={toggleVoice}
+              className={`w-10 h-10 rounded-full flex items-center justify-center text-lg transition-all ${
+                isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 text-gray-500'
+              }`}>
+              🎤
+            </button>
           </div>
+
+          {/* 语音识别结果提示 */}
+          {voiceText && (
+            <div className="mx-4 mt-3 px-3 py-2 bg-blue-50 rounded-lg text-sm text-blue-700 text-center">
+              {isListening ? '🎙️ ' : '💬 '}{voiceText}
+            </div>
+          )}
+
           <div className="flex justify-center gap-1 px-4 mt-3 overflow-x-auto">
             {accounts.map(a => (
               <button key={a.id} onClick={() => setAccountId(a.id)}
@@ -69,7 +124,6 @@ export default function RecordPage() {
             ))}
           </div>
 
-          {/* 模板快捷入口 */}
           {templates.filter(t => t.type === billType).length > 0 && (
             <div className="px-4 mt-3">
               <div className="text-xs text-gray-400 mb-2">常用模板</div>
@@ -95,7 +149,6 @@ export default function RecordPage() {
           <input type="text" placeholder="添加备注..." value={note}
             onChange={e => setNote(e.target.value)}
             className="w-full px-4 py-3 mb-2 bg-gray-50 rounded-xl text-sm outline-none focus:ring-2 focus:ring-yellow-300" />
-          {/* 报销标记 */}
           <label className="flex items-center gap-2 mb-2 text-sm text-gray-500">
             <input type="checkbox" checked={isReimbursable} onChange={e => setIsReimbursable(e.target.checked)}
               className="w-4 h-4 accent-yellow-400" />
