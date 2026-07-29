@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { recordAndRecognize } from '../utils/volcengine'
 import { parseVoiceTextMulti } from '../utils/voice'
@@ -18,17 +18,18 @@ export default function Layout() {
   const [isListening, setIsListening] = useState(false)
   const [voiceText, setVoiceText] = useState('')
   const [voiceError, setVoiceError] = useState('')
+  const [shakeOn, setShakeOn] = useState(false)
+  const shakeLock = useRef(false)
 
-  const handleVoice = useCallback(async () => {
+  const doRecognize = useCallback(async () => {
+    if (isListening) return
     setIsListening(true)
     setVoiceText('正在听...')
     setVoiceError('')
-
     try {
       const text = await recordAndRecognize()
       setVoiceText(text)
       const results = parseVoiceTextMulti(text)
-
       let saved = 0
       for (const r of results) {
         if (r.amount && r.categoryId) {
@@ -39,18 +40,55 @@ export default function Layout() {
           saved++
         }
       }
-
-      if (saved > 0) {
-        setVoiceText(`已记录 ${saved} 笔：${text}`)
-      } else {
-        setVoiceText(`识别结果：${text}（未能解析）`)
-      }
+      if (saved > 0) setVoiceText(`已记录 ${saved} 笔：${text}`)
+      else setVoiceText(`识别结果：${text}（未能解析）`)
     } catch (err: any) {
       setVoiceError(err.message || '识别失败')
     } finally {
       setIsListening(false)
     }
-  }, [addBillRecord, expenseCategories, incomeCategories])
+  }, [addBillRecord, expenseCategories, incomeCategories, isListening])
+
+  // 摇一摇监听
+  useEffect(() => {
+    if (!shakeOn) return
+
+    let lastX = 0, lastY = 0, lastZ = 0
+    let lastShake = 0
+
+    const handler = (e: DeviceMotionEvent) => {
+      const acc = e.accelerationIncludingGravity
+      if (!acc || !acc.x || !acc.y || !acc.z) return
+
+      const now = Date.now()
+      const deltaX = Math.abs(acc.x - lastX)
+      const deltaY = Math.abs(acc.y - lastY)
+      const deltaZ = Math.abs(acc.z - lastZ)
+      lastX = acc.x; lastY = acc.y; lastZ = acc.z
+
+      const shake = deltaX + deltaY + deltaZ
+      if (shake > 25 && now - lastShake > 3000 && !shakeLock.current) {
+        lastShake = now
+        shakeLock.current = true
+        setVoiceText('摇一摇触发记账 🎤')
+        doRecognize().finally(() => { shakeLock.current = false })
+      }
+    }
+
+    window.addEventListener('devicemotion', handler)
+    return () => window.removeEventListener('devicemotion', handler)
+  }, [shakeOn, doRecognize])
+
+  // iOS 需要主动请求权限
+  const enableShake = () => {
+    if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
+      (DeviceMotionEvent as any).requestPermission().then((state: string) => {
+        if (state === 'granted') setShakeOn(true)
+      }).catch(() => {})
+    } else {
+      setShakeOn(!shakeOn)
+    }
+  }
 
   return (
     <div className="flex flex-col h-dvh bg-white max-w-lg mx-auto">
@@ -62,6 +100,14 @@ export default function Layout() {
         </div>
       )}
 
+      {/* 摇一摇开关 */}
+      <div className="flex justify-center shrink-0">
+        <button onClick={enableShake}
+          className={`text-xs px-3 py-0.5 rounded-full mt-1 ${shakeOn ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+          {shakeOn ? '📳 摇一摇已开启' : '📳 摇一摇记账'}
+        </button>
+      </div>
+
       <div className="flex-1 overflow-auto relative">
         <Outlet />
       </div>
@@ -72,14 +118,10 @@ export default function Layout() {
           if (tab.path === '/chart') {
             return (
               <>
-                <button
-                  key="voice"
-                  onClick={handleVoice}
-                  disabled={isListening}
+                <button key="voice" onClick={doRecognize} disabled={isListening}
                   className={`flex-1 flex flex-col items-center py-1 text-xs gap-0.5 ${
                     isListening ? 'text-red-500' : 'text-gray-400'
-                  }`}
-                >
+                  }`}>
                   <span className="text-xl">{isListening ? '🔴' : '🎤'}</span>
                   <span>语音</span>
                 </button>
@@ -104,6 +146,7 @@ export default function Layout() {
           )
         })}
       </nav>
+
       <div className="text-center text-xs text-gray-300 pb-1 shrink-0">v{__APP_VERSION__}</div>
     </div>
   )
