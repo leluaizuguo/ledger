@@ -25,10 +25,12 @@ const KEYWORD_CATEGORY_MAP: Record<string, { catId: string; type: 'expense' | 'i
   '股票|基金|理财|收益|利息|投资|赚': { catId: 'invest', type: 'income' },
   '兼职|副业|外快|接单': { catId: 'parttime', type: 'income' },
   '退款|退钱|报销|返还|返现': { catId: 'other_inc', type: 'income' },
+  // 支付类默认
+  '微信支付|付款|扫码支付|支付|收款|转账': { catId: 'other_exp', type: 'expense' },
 }
 
 // 金额模式
-const AMOUNT_RE = /(\d+(?:\.\d{1,2})?)\s*[元块¥]\s*(\d+)?\s*(?:毛|角|钱)?|(\d+(?:\.\d{1,2})?)\s*(?:块钱|元钱)|([一二两三两四五六七八九十百千万亿零]+)\s*[块元]\s*([一二两三两四五六七八九])?\s*(?:毛|角|钱)?|(\d+(?:\.\d{1,2})?)(?=\s|$|[^\d])/g
+const AMOUNT_RE = /(\d+(?:\.\d{1,2})?)\s*[元块¥]\s*(\d+)?\s*(?:毛|角|钱)?|(\d+(?:\.\d{1,2})?)\s*(?:块钱|元钱)|([一二两三两四五六七八九十百千万亿零]+)\s*[块元]\s*([一二两三两四五六七八九])?\s*(?:毛|角|钱)?|(\d+(?:\.\d{1,2})?)(?=\s|$|[^\d])|(?:微信支付|付款|支付|收款|转账|红包)\s*[¥：:]*\s*(\d+(?:\.\d{1,2})?)/g
 
 // 中文数字→阿拉伯数字
 const CN_NUM: Record<string, number> = {
@@ -128,6 +130,9 @@ export function parseVoiceTextMulti(text: string): VoiceResult[] {
     } else if (m[6]) {
       // 纯数字：3.5、12.8
       amount = parseFloat(m[6])
+    } else if (m[7]) {
+      // 微信支付等：微信支付 12.50
+      amount = parseFloat(m[7])
     }
     if (amount > 0 && amount < 100000000) {
       matches.push({ amount: Math.round(amount * 100), index: m.index, end: m.index + m[0].length, raw: m[0] })
