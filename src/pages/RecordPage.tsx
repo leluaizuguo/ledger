@@ -15,6 +15,9 @@ export default function RecordPage() {
   const [note, setNote] = useState('')
   const [isReimbursable, setIsReimbursable] = useState(false)
   const [imageData, setImageData] = useState<string>('')
+  const [splitPay, setSplitPay] = useState(false)
+  const [account2, setAccount2] = useState('cash')
+  const [amount2Fen, setAmount2Fen] = useState(0)
 
   const categories = billType === 'expense' ? expenseCategories : incomeCategories
 
@@ -36,8 +39,16 @@ export default function RecordPage() {
       note: note.trim() || categories.find(c => c.id === categoryId)?.name || '',
       date: getTodayISO(), isReimbursable, imageData: imageData || undefined,
     })
+    if (splitPay && amount2Fen > 0 && account2 !== accountId) {
+      await addBillRecord({
+        amount: amount2Fen, type: billType, categoryId, accountId: account2,
+        note: (note.trim() || categories.find(c => c.id === categoryId)?.name || '') + '(组合)',
+        date: getTodayISO(), isReimbursable,
+      })
+    }
     setShowCategory(false); setCategoryId(null); setAmountFen(0)
     setNote(''); setIsReimbursable(false); setImageData('')
+    setSplitPay(false); setAmount2Fen(0); setAccount2('cash')
   }
 
   const handleSaveAsTemplate = async () => {
@@ -124,6 +135,21 @@ export default function RecordPage() {
                 }} />
             </label>
           </div>
+          {/* 组合付款 */}
+          <label className="flex items-center gap-2 mb-2 text-sm text-gray-500">
+            <input type="checkbox" checked={splitPay} onChange={e => setSplitPay(e.target.checked)} className="w-4 h-4 accent-yellow-400" />
+            组合付款
+          </label>
+          {splitPay && (
+            <div className="flex gap-2 mb-2">
+              <select value={account2} onChange={e => setAccount2(e.target.value)} className="flex-1 px-2 py-2 bg-gray-50 dark:bg-gray-800 dark:text-white rounded text-sm">
+                {accounts.filter(a => a.id !== accountId).map(a => <option key={a.id} value={a.id}>{a.icon} {a.name}</option>)}
+              </select>
+              <input type="number" placeholder="金额" value={amount2Fen ? (amount2Fen/100).toString() : ''}
+                onChange={e => setAmount2Fen(Math.round(parseFloat(e.target.value || '0') * 100))}
+                className="w-24 px-2 py-2 bg-gray-50 dark:bg-gray-800 dark:text-white rounded text-sm" />
+            </div>
+          )}
           <div className="flex-1 overflow-auto">
             <CategoryGrid categories={categories} selected={categoryId} onSelect={setCategoryId} />
           </div>

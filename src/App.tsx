@@ -3,6 +3,7 @@ import Layout from './components/Layout'
 import RecordPage from './pages/RecordPage'
 import BillsPage from './pages/BillsPage'
 import ChartPage from './pages/ChartPage'
+import CalendarPage from './pages/CalendarPage'
 import AccountPage from './pages/AccountPage'
 
 export default function App() {
@@ -12,6 +13,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/record"   element={<RecordPage />} />
           <Route path="/bills"    element={<BillsPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/chart"    element={<ChartPage />} />
           <Route path="/accounts" element={<AccountPage />} />
         </Route>

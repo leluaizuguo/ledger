@@ -8,6 +8,7 @@ import { getTodayISO } from '../utils/format'
 const tabs = [
   { path: '/record',   label: '记账', icon: '✏️' },
   { path: '/bills',    label: '账单', icon: '📋' },
+  { path: '/calendar', label: '日历', icon: '📅' },
   { path: '/chart',    label: '图表', icon: '📊' },
   { path: '/accounts', label: '资产', icon: '💼' },
 ]
