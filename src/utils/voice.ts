@@ -28,7 +28,69 @@ const KEYWORD_CATEGORY_MAP: Record<string, { catId: string; type: 'expense' | 'i
 }
 
 // 金额模式
-const AMOUNT_RE = /(\d+(?:\.\d{1,2})?)\s*[元块¥]|(\d+(?:\.\d{1,2})?)\s*(?:块钱|元钱)/g
+const AMOUNT_RE = /(\d+(?:\.\d{1,2})?)\s*[元块¥]|(\d+(?:\.\d{1,2})?)\s*(?:块钱|元钱)|([一二两三两四五六七八九十百千万亿零]+)\s*[块元]\s*(?:[钱]?)|([一二两三两四五六七八九十百千万亿零]+)\s*块\s*([一二两三两四五六七八九])?\s*(?:毛|角)?/g
+
+// 中文数字→阿拉伯数字
+const CN_NUM: Record<string, number> = {
+  '零':0,'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,
+  '十':10,'百':100,'千':1000,'万':10000,'亿':100000000,
+}
+
+function cnToNum(s: string): number {
+  if (!s) return 0
+  // 先处理简单情况: "三块五" → 拆成 "三" "块" "五"
+  // 块前面的数字是元，后面的数字(毛/角)是角
+  const parts = s.split(/[块元]/)
+  const yuanPart = parts[0].trim()
+  const jiaoPart = parts[1]?.replace(/[毛角钱]/g, '').trim() || ''
+
+  let yuan = 0
+  if (/^\d+$/.test(yuanPart)) {
+    yuan = parseInt(yuanPart)
+  } else {
+    yuan = parseCnNumber(yuanPart)
+  }
+
+  let jiao = 0
+  if (jiaoPart) {
+    if (/^\d+$/.test(jiaoPart)) {
+      jiao = parseInt(jiaoPart)
+    } else {
+      jiao = parseCnNumber(jiaoPart)
+    }
+  }
+
+  // 如果角是个位数（比如 5），就是 0.5
+  if (jiao > 0 && jiao < 10 && jiaoPart.length === 1) {
+    return yuan + jiao * 0.1
+  }
+  return yuan + (jiao / 100)
+}
+
+function parseCnNumber(s: string): number {
+  if (!s || s === '零') return 0
+  if (/^\d+$/.test(s)) return parseInt(s)
+
+  let result = 0
+  let current = 0
+
+  for (const ch of s) {
+    const v = CN_NUM[ch]
+    if (v === undefined) continue
+    if (v >= 10) {
+      if (current === 0) current = 1
+      current *= v
+      if (v >= 10000) {
+        result += current
+        current = 0
+      }
+    } else {
+      current = v
+    }
+  }
+  result += current
+  return result || 1
+}
 
 function matchCategory(text: string): { catId: string; type: 'expense' | 'income' } | null {
   for (const [keywords, mapping] of Object.entries(KEYWORD_CATEGORY_MAP)) {
@@ -51,8 +113,14 @@ export function parseVoiceTextMulti(text: string): VoiceResult[] {
   const matches: { amount: number; index: number; end: number; raw: string }[] = []
   let m
   while ((m = AMOUNT_RE.exec(text)) !== null) {
-    const amountStr = m[1] || m[2]
-    const amount = parseFloat(amountStr)
+    let amount = 0
+    if (m[1] || m[2]) {
+      // 阿拉伯数字：25元、10块钱
+      amount = parseFloat(m[1] || m[2])
+    } else {
+      // 中文数字：三块五、六块
+      amount = cnToNum(m[0])
+    }
     if (amount > 0 && amount < 100000000) {
       matches.push({ amount: Math.round(amount * 100), index: m.index, end: m.index + m[0].length, raw: m[0] })
     }
