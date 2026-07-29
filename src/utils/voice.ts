@@ -28,7 +28,7 @@ const KEYWORD_CATEGORY_MAP: Record<string, { catId: string; type: 'expense' | 'i
 }
 
 // 金额模式
-const AMOUNT_RE = /(\d+(?:\.\d{1,2})?)\s*[元块¥]|(\d+(?:\.\d{1,2})?)\s*(?:块钱|元钱)|([一二两三两四五六七八九十百千万亿零]+)\s*[块元]\s*([一二两三两四五六七八九])?\s*(?:毛|角|钱)?/g
+const AMOUNT_RE = /(\d+(?:\.\d{1,2})?)\s*[元块¥]\s*(\d+)?\s*(?:毛|角|钱)?|(\d+(?:\.\d{1,2})?)\s*(?:块钱|元钱)|([一二两三两四五六七八九十百千万亿零]+)\s*[块元]\s*([一二两三两四五六七八九])?\s*(?:毛|角|钱)?/g
 
 // 中文数字→阿拉伯数字
 const CN_NUM: Record<string, number> = {
@@ -114,11 +114,16 @@ export function parseVoiceTextMulti(text: string): VoiceResult[] {
   let m
   while ((m = AMOUNT_RE.exec(text)) !== null) {
     let amount = 0
-    if (m[1] || m[2]) {
-      amount = parseFloat(m[1] || m[2])
+    if (m[1]) {
+      // 阿拉伯数字：25元、3块5
+      const yuan = parseFloat(m[1])
+      const jiao = m[2] ? parseInt(m[2]) : 0
+      amount = yuan + (jiao / 10 ** (m[2]?.length || 0))
     } else if (m[3]) {
-      // 中文数字：三块五、六块 → 重建完整匹配文本
-      const full = m[3] + '块' + (m[4] || '')
+      amount = parseFloat(m[3])
+    } else if (m[4]) {
+      // 中文数字：三块五、六块
+      const full = m[4] + '块' + (m[5] || '')
       amount = cnToNum(full)
     }
     if (amount > 0 && amount < 100000000) {
