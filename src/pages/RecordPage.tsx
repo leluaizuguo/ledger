@@ -90,11 +90,23 @@ export default function RecordPage() {
           <input type="text" placeholder="添加备注..." value={note}
             onChange={e => setNote(e.target.value)}
             className="w-full px-4 py-3 mb-2 bg-gray-50 rounded-xl text-sm outline-none focus:ring-2 focus:ring-yellow-300" />
-          <label className="flex items-center gap-2 mb-2 text-sm text-gray-500">
-            <input type="checkbox" checked={isReimbursable} onChange={e => setIsReimbursable(e.target.checked)}
-              className="w-4 h-4 accent-yellow-400" />
-            标记为待报销
-          </label>
+          <div className="flex items-center gap-2 mb-2">
+            <label className="flex items-center gap-2 text-sm text-gray-500">
+              <input type="checkbox" checked={isReimbursable} onChange={e => setIsReimbursable(e.target.checked)}
+                className="w-4 h-4 accent-yellow-400" />
+              待报销
+            </label>
+            <button onClick={() => {
+              navigator.geolocation.getCurrentPosition(
+                pos => setNote(n => n + ` 📍${pos.coords.latitude.toFixed(2)},${pos.coords.longitude.toFixed(2)}`),
+                () => setNote(n => n + ' 📍未知位置'),
+                { timeout: 5000 }
+              )
+            }}
+              className="text-xs text-gray-400 px-2 py-1 rounded bg-gray-50 active:bg-gray-100">
+              📍 定位
+            </button>
+          </div>
           <div className="flex-1 overflow-auto">
             <CategoryGrid categories={categories} selected={categoryId} onSelect={setCategoryId} />
           </div>

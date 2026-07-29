@@ -19,8 +19,15 @@ export default function Layout() {
   const [voiceText, setVoiceText] = useState('')
   const [voiceError, setVoiceError] = useState('')
   const [shakeOn, setShakeOn] = useState(false)
+  const [dark, setDark] = useState(() => localStorage.getItem('dark') === '1')
   const shakeLock = useRef(false)
   const [searchParams] = useSearchParams()
+
+  // 深色模式同步
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+    localStorage.setItem('dark', dark ? '1' : '0')
+  }, [dark])
 
   // URL 参数自动记账 (如 ?amount=25&note=午餐)
   useEffect(() => {
@@ -116,7 +123,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex flex-col h-dvh bg-white max-w-lg mx-auto">
+    <div className="flex flex-col h-dvh bg-white dark:bg-gray-900 max-w-lg mx-auto">
       {(voiceText || voiceError) && (
         <div className={`mx-4 mt-2 px-3 py-2 rounded-lg text-sm text-center shrink-0 ${
           voiceError ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-700'
@@ -125,11 +132,15 @@ export default function Layout() {
         </div>
       )}
 
-      {/* 摇一摇开关 */}
-      <div className="flex justify-center shrink-0">
+      {/* 摇一摇和暗色模式 */}
+      <div className="flex justify-center gap-2 shrink-0">
         <button onClick={enableShake}
-          className={`text-xs px-3 py-0.5 rounded-full mt-1 ${shakeOn ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-          {shakeOn ? '📳 摇一摇已开启' : '📳 摇一摇记账'}
+          className={`text-xs px-3 py-0.5 rounded-full mt-1 ${shakeOn ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400 dark:bg-gray-800'}`}>
+          {shakeOn ? '📳 已开启' : '📳 摇一摇'}
+        </button>
+        <button onClick={() => setDark(!dark)}
+          className={`text-xs px-3 py-0.5 rounded-full mt-1 bg-gray-100 dark:bg-gray-800 text-gray-400`}>
+          {dark ? '☀️' : '🌙'}
         </button>
       </div>
 
