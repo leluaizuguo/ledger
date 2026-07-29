@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { recordAndRecognize } from '../utils/volcengine'
-import { parseVoiceText } from '../utils/voice'
+import { parseVoiceTextMulti } from '../utils/voice'
 import { useStore } from '../store/useStore'
 import { getTodayISO } from '../utils/format'
 
@@ -27,17 +27,23 @@ export default function Layout() {
     try {
       const text = await recordAndRecognize()
       setVoiceText(text)
-      const allCats = [...expenseCategories, ...incomeCategories]
-      const result = parseVoiceText(text, allCats)
+      const results = parseVoiceTextMulti(text)
 
-      if (result.amount && result.categoryId) {
-        await addBillRecord({
-          amount: result.amount, type: result.type, categoryId: result.categoryId,
-          accountId: 'wechat', note: text, date: getTodayISO(),
-        })
-        setVoiceText(`已记录：${text}`)
+      let saved = 0
+      for (const r of results) {
+        if (r.amount && r.categoryId) {
+          await addBillRecord({
+            amount: r.amount, type: r.type, categoryId: r.categoryId,
+            accountId: 'wechat', note: r.note || text, date: getTodayISO(),
+          })
+          saved++
+        }
+      }
+
+      if (saved > 0) {
+        setVoiceText(`已记录 ${saved} 笔：${text}`)
       } else {
-        setVoiceText(`识别结果：${text}（未能解析金额和分类）`)
+        setVoiceText(`识别结果：${text}（未能解析）`)
       }
     } catch (err: any) {
       setVoiceError(err.message || '识别失败')
