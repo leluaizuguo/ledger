@@ -28,7 +28,7 @@ const KEYWORD_CATEGORY_MAP: Record<string, { catId: string; type: 'expense' | 'i
 }
 
 // 金额模式
-const AMOUNT_RE = /(\d+(?:\.\d{1,2})?)\s*[元块¥]|(\d+(?:\.\d{1,2})?)\s*(?:块钱|元钱)|([一二两三两四五六七八九十百千万亿零]+)\s*[块元]\s*(?:[钱]?)|([一二两三两四五六七八九十百千万亿零]+)\s*块\s*([一二两三两四五六七八九])?\s*(?:毛|角)?/g
+const AMOUNT_RE = /(\d+(?:\.\d{1,2})?)\s*[元块¥]|(\d+(?:\.\d{1,2})?)\s*(?:块钱|元钱)|([一二两三两四五六七八九十百千万亿零]+)\s*[块元]\s*([一二两三两四五六七八九])?\s*(?:毛|角|钱)?/g
 
 // 中文数字→阿拉伯数字
 const CN_NUM: Record<string, number> = {
@@ -115,11 +115,11 @@ export function parseVoiceTextMulti(text: string): VoiceResult[] {
   while ((m = AMOUNT_RE.exec(text)) !== null) {
     let amount = 0
     if (m[1] || m[2]) {
-      // 阿拉伯数字：25元、10块钱
       amount = parseFloat(m[1] || m[2])
-    } else {
-      // 中文数字：三块五、六块
-      amount = cnToNum(m[0])
+    } else if (m[3]) {
+      // 中文数字：三块五、六块 → 重建完整匹配文本
+      const full = m[3] + '块' + (m[4] || '')
+      amount = cnToNum(full)
     }
     if (amount > 0 && amount < 100000000) {
       matches.push({ amount: Math.round(amount * 100), index: m.index, end: m.index + m[0].length, raw: m[0] })
