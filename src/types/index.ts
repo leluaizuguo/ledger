@@ -11,6 +11,7 @@ export interface Bill {
   isReimbursable?: boolean  // V3
   reimbursed?: boolean      // V3
   installmentId?: number    // V3: 关联分期
+  imageData?: string        // V3: 照片 base64
 }
 
 export interface Account {

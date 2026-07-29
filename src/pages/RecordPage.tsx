@@ -14,6 +14,7 @@ export default function RecordPage() {
   const [amountFen, setAmountFen] = useState(0)
   const [note, setNote] = useState('')
   const [isReimbursable, setIsReimbursable] = useState(false)
+  const [imageData, setImageData] = useState<string>('')
 
   const categories = billType === 'expense' ? expenseCategories : incomeCategories
 
@@ -33,10 +34,10 @@ export default function RecordPage() {
     await addBillRecord({
       amount: amountFen, type: billType, categoryId, accountId,
       note: note.trim() || categories.find(c => c.id === categoryId)?.name || '',
-      date: getTodayISO(), isReimbursable,
+      date: getTodayISO(), isReimbursable, imageData: imageData || undefined,
     })
     setShowCategory(false); setCategoryId(null); setAmountFen(0)
-    setNote(''); setIsReimbursable(false)
+    setNote(''); setIsReimbursable(false); setImageData('')
   }
 
   const handleSaveAsTemplate = async () => {
@@ -90,6 +91,12 @@ export default function RecordPage() {
           <input type="text" placeholder="添加备注..." value={note}
             onChange={e => setNote(e.target.value)}
             className="w-full px-4 py-3 mb-2 bg-gray-50 rounded-xl text-sm outline-none focus:ring-2 focus:ring-yellow-300" />
+          {imageData && (
+            <div className="mb-2 relative inline-block">
+              <img src={imageData} alt="" className="h-20 rounded-lg" />
+              <button onClick={() => setImageData('')} className="absolute -top-1 -right-1 w-5 h-5 bg-gray-800 text-white rounded-full text-xs">×</button>
+            </div>
+          )}
           <div className="flex items-center gap-2 mb-2">
             <label className="flex items-center gap-2 text-sm text-gray-500">
               <input type="checkbox" checked={isReimbursable} onChange={e => setIsReimbursable(e.target.checked)}
@@ -106,6 +113,16 @@ export default function RecordPage() {
               className="text-xs text-gray-400 px-2 py-1 rounded bg-gray-50 active:bg-gray-100">
               📍 定位
             </button>
+            <label className="text-xs text-gray-400 px-2 py-1 rounded bg-gray-50 active:bg-gray-100 cursor-pointer">
+              📷 拍照
+              <input type="file" accept="image/*" capture="environment" className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0]; if (!f) return
+                  const r = new FileReader()
+                  r.onload = () => setImageData(r.result as string)
+                  r.readAsDataURL(f)
+                }} />
+            </label>
           </div>
           <div className="flex-1 overflow-auto">
             <CategoryGrid categories={categories} selected={categoryId} onSelect={setCategoryId} />
