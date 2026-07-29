@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { recordAndRecognize } from '../utils/volcengine'
 import { parseVoiceTextMulti } from '../utils/voice'
 import { useStore } from '../store/useStore'
@@ -20,6 +20,31 @@ export default function Layout() {
   const [voiceError, setVoiceError] = useState('')
   const [shakeOn, setShakeOn] = useState(false)
   const shakeLock = useRef(false)
+  const [searchParams] = useSearchParams()
+
+  // URL 参数自动记账 (如 ?amount=25&note=午餐)
+  useEffect(() => {
+    const amount = searchParams.get('amount')
+    const note = searchParams.get('note') || ''
+    const type = searchParams.get('type') || 'expense'
+    if (!amount) return
+
+    const num = parseFloat(amount)
+    if (isNaN(num) || num <= 0) return
+
+    const results = parseVoiceTextMulti(note || `金额 ${amount}元`)
+    const r = results[0]
+    addBillRecord({
+      amount: Math.round(num * 100),
+      type: type as 'expense' | 'income',
+      categoryId: r.categoryId || 'other_exp',
+      accountId: 'wechat',
+      note: note || `快捷记账 ¥${num}`,
+      date: getTodayISO(),
+    }).then(() => {
+      setVoiceText(`已记录：${note || ('¥' + num)}`)
+    })
+  }, [searchParams])
 
   const doRecognize = useCallback(async () => {
     if (isListening) return
