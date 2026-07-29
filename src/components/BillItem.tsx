@@ -49,6 +49,9 @@ export default function BillItem({ bill }: Props) {
       <div className={`text-sm font-semibold ${bill.type === 'income' ? 'text-green-500' : 'text-gray-800 dark:text-gray-200'}`}>
         {bill.type === 'income' ? '+' : '-'}{formatMoney(bill.amount)}
       </div>
+      {bill.accountId && (
+        <span className="text-xs text-gray-400 ml-1">{bill.accountId === 'cash' ? '💵' : bill.accountId === 'debit' ? '🏦' : bill.accountId === 'credit' ? '💳' : bill.accountId === 'alipay' ? '🔵' : bill.accountId === 'wechat' ? '🟢' : ''}</span>
+      )}
       {bill.imageData && (
         <img src={bill.imageData} alt="" className="ml-2 h-10 w-10 rounded object-cover" />
       )}
