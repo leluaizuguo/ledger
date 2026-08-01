@@ -21,7 +21,5 @@ Thumbs.db
 .env
 .env.local
 
-# Server binaries and data
-server/*.exe
-server/*.db*
-server/.venv/
+# Server — keep private (not distributed)
+server/
