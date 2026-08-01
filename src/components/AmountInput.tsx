@@ -28,7 +28,7 @@ export default function AmountInput({ onConfirm }: Props) {
     return n.toFixed(2)
   })()
 
-  const keys = ['1','2','3','4','5','6','7','8','9','C','0','⌫']
+  const keys = ['1','2','3','4','5','6','7','8','9','C','0','.','⌫']
 
   return (
     <div className="px-4 pt-6">
