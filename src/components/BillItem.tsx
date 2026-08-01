@@ -36,6 +36,7 @@ export default function BillItem({ bill }: Props) {
         <div>
           <div className="flex items-center gap-1">
             <span className="font-medium text-sm dark:text-gray-200">{bill.note || cat?.name}</span>
+            {bill.display_name && <span className="text-xs text-gray-400">· {bill.display_name}</span>}
             {bill.isReimbursable && !bill.reimbursed && (
               <span className="text-xs bg-orange-100 text-orange-500 px-1.5 rounded">待报销</span>
             )}

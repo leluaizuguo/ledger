@@ -4,6 +4,7 @@ import { recordAndRecognize } from '../utils/volcengine'
 import { parseVoiceTextMulti } from '../utils/voice'
 import { useStore } from '../store/useStore'
 import { getTodayISO } from '../utils/format'
+import { logout } from '../utils/api'
 
 const tabs = [
   { path: '/record',   label: '记账', icon: '✏️' },
@@ -15,7 +16,7 @@ const tabs = [
 
 export default function Layout() {
   const location = useLocation()
-  const { addBillRecord, expenseCategories, incomeCategories } = useStore()
+  const { addBillRecord, expenseCategories, incomeCategories, syncStatus, currentUser, loadUser, initSync, teardownSync } = useStore()
   const [isListening, setIsListening] = useState(false)
   const [voiceText, setVoiceText] = useState('')
   const [voiceError, setVoiceError] = useState('')
@@ -29,6 +30,9 @@ export default function Layout() {
     document.documentElement.classList.toggle('dark', dark)
     localStorage.setItem('dark', dark ? '1' : '0')
   }, [dark])
+
+  // V4: 加载用户 + 启动同步
+  useEffect(() => { loadUser(); initSync(); return () => teardownSync() }, [])
 
   // URL 参数自动记账 (如 ?amount=25&note=午餐)
   useEffect(() => {
@@ -125,6 +129,21 @@ export default function Layout() {
 
   return (
     <div className="flex flex-col h-dvh bg-white dark:bg-gray-900 max-w-lg mx-auto">
+      {/* V4: sync status + user */}
+      <div className="flex items-center justify-between px-4 pt-2 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <span className={`w-2 h-2 rounded-full ${
+            syncStatus === 'syncing' ? 'bg-yellow-400 animate-pulse' :
+            syncStatus === 'error' ? 'bg-red-400' : 'bg-green-400'
+          }`} />
+          <span className="text-xs text-gray-400">{syncStatus === 'syncing' ? '同步中' : syncStatus === 'error' ? '失败' : '在线'}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {currentUser && <span className="text-xs text-gray-500">{currentUser.display_name}</span>}
+          <button onClick={logout} className="text-xs text-gray-400 hover:text-red-500">退出</button>
+        </div>
+      </div>
+
       {(voiceText || voiceError) && (
         <div className={`mx-4 mt-2 px-3 py-2 rounded-lg text-sm text-center shrink-0 ${
           voiceError ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-700'

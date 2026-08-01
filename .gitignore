@@ -20,3 +20,8 @@ Thumbs.db
 # Env
 .env
 .env.local
+
+# Server binaries and data
+server/*.exe
+server/*.db
+server/.venv/

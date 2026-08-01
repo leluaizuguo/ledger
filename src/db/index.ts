@@ -20,10 +20,35 @@ class LedgerDB extends Dexie {
       recurrings: '++id, active',
       installments: '++id, billId',
     }).upgrade(async tx => {
-      // 初始化默认模板
       const tCount = await tx.table('templates').count()
       if (tCount === 0) {
         await tx.table('templates').bulkAdd(DEFAULT_TEMPLATES)
+      }
+    })
+
+    // V4: add client_id and user_id for sync
+    this.version(4).stores({
+      bills: '++id, client_id, user_id, type, categoryId, accountId, date, amount, createdAt, updatedAt',
+      accounts: 'id, type',
+      budgets: '++id, month, categoryId',
+      templates: '++id, type',
+      recurrings: '++id, active',
+      installments: '++id, billId',
+    }).upgrade(async tx => {
+      const bills = await tx.table('bills').toArray()
+      for (const b of bills) {
+        if (!b.client_id) {
+          const cid = crypto.randomUUID ? crypto.randomUUID() :
+            'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g, (c: string) => {
+              const r = Math.random() * 16 | 0
+              return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+            })
+          await tx.table('bills').update(b.id, {
+            client_id: cid,
+            user_id: b.user_id || 0,
+            updatedAt: b.createdAt || Date.now() / 1000,
+          })
+        }
       }
     })
   }

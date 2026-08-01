@@ -1,5 +1,8 @@
 export interface Bill {
   id?: number
+  client_id: string
+  user_id: number
+  display_name?: string
   amount: number
   type: 'expense' | 'income' | 'transfer_out' | 'transfer_in'
   categoryId: string
@@ -8,10 +11,11 @@ export interface Bill {
   note: string
   date: string
   createdAt: number
-  isReimbursable?: boolean  // V3
-  reimbursed?: boolean      // V3
-  installmentId?: number    // V3: 关联分期
-  imageData?: string        // V3: 照片 base64
+  updatedAt?: number
+  isReimbursable?: boolean
+  reimbursed?: boolean
+  installmentId?: number
+  imageData?: string
 }
 
 export interface Account {
