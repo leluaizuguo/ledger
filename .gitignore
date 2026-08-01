@@ -23,5 +23,5 @@ Thumbs.db
 
 # Server binaries and data
 server/*.exe
-server/*.db
+server/*.db*
 server/.venv/

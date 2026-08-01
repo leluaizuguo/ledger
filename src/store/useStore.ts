@@ -8,6 +8,7 @@ import {
   getRecurrings, saveRecurring, updateRecurring, deleteRecurring,
   getInstallments, createInstallment,
   getDueRecurrings, getAllBills, db,
+  getCustomCats, addCustomCat, deleteCustomCat,
 } from '../db'
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from '../data/categories'
 import { getUser } from '../utils/api'
@@ -49,6 +50,10 @@ interface LedgerState {
   addInstallment: (i: Omit<Installment, 'id'>) => Promise<void>
   expenseCategories: Category[]
   incomeCategories: Category[]
+  customCategories: Category[]
+  loadCustomCats: () => Promise<void>
+  addCustomCat: (name: string, icon: string, type: 'expense' | 'income') => Promise<void>
+  removeCustomCat: (id: string) => Promise<void>
   refreshKey: number
   triggerRefresh: () => void
   checkRecurrings: () => Promise<void>
@@ -101,6 +106,26 @@ export const useStore = create<LedgerState>((set, get) => ({
   installments: [],
   loadInstallments: async () => { set({ installments: await getInstallments() }) },
   addInstallment: async (i) => { await createInstallment(i); await get().loadInstallments() },
+
+  // Custom categories
+  customCategories: [],
+  loadCustomCats: async () => {
+    const cats = await getCustomCats()
+    set(s => ({
+      customCategories: cats,
+      expenseCategories: [...DEFAULT_EXPENSE_CATEGORIES, ...cats.filter(c => c.type === 'expense')],
+      incomeCategories: [...DEFAULT_INCOME_CATEGORIES, ...cats.filter(c => c.type === 'income')],
+    }))
+  },
+  addCustomCat: async (name, icon, type) => {
+    const id = 'custom_' + name + '_' + Date.now()
+    await addCustomCat({ id, name, icon, type })
+    await get().loadCustomCats()
+  },
+  removeCustomCat: async (id: string) => {
+    await deleteCustomCat(id)
+    await get().loadCustomCats()
+  },
   checkRecurrings: async () => {
     const month = get().currentMonth
     const due = await getDueRecurrings(month)

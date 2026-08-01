@@ -9,7 +9,7 @@ export const DEFAULT_EXPENSE_CATEGORIES: Category[] = [
   { id: 'medical',   name: '医疗',   icon: '💊', type: 'expense' },
   { id: 'education', name: '教育',   icon: '📚', type: 'expense' },
   { id: 'digital',   name: '数码',   icon: '📱', type: 'expense' },
-  { id: 'beauty',    name: '美容',   icon: '💄', type: 'expense' },
+  { id: 'travel',    name: '旅游',   icon: '✈️', type: 'expense' },
   { id: 'pet',       name: '宠物',   icon: '🐱', type: 'expense' },
   { id: 'gift',      name: '人情',   icon: '🎁', type: 'expense' },
   { id: 'other_exp', name: '其他支出', icon: '💸', type: 'expense' },

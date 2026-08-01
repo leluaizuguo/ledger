@@ -1,5 +1,5 @@
 import Dexie, { Table } from 'dexie'
-import { Bill, Account, Budget, BillTemplate, RecurringBill, Installment } from '../types'
+import { Bill, Account, Budget, BillTemplate, RecurringBill, Installment, Category } from '../types'
 
 class LedgerDB extends Dexie {
   bills!: Table<Bill, number>
@@ -8,6 +8,7 @@ class LedgerDB extends Dexie {
   templates!: Table<BillTemplate, number>
   recurrings!: Table<RecurringBill, number>
   installments!: Table<Installment, number>
+  custom_cats!: Table<Category, string>
 
   constructor() {
     super('ledger')
@@ -50,6 +51,17 @@ class LedgerDB extends Dexie {
           })
         }
       }
+    })
+
+    // V5: custom categories
+    this.version(5).stores({
+      bills: '++id, client_id, user_id, type, categoryId, accountId, date, amount, createdAt, updatedAt',
+      accounts: 'id, type',
+      budgets: '++id, month, categoryId',
+      templates: '++id, type',
+      recurrings: '++id, active',
+      installments: '++id, billId',
+      custom_cats: 'id, type',
     })
   }
 }
@@ -160,6 +172,17 @@ export async function createInstallment(i: Omit<Installment, 'id'>): Promise<num
 }
 export async function updateInstallment(id: number, changes: Partial<Installment>): Promise<number> {
   return db.installments.update(id, changes)
+}
+
+// === Custom Categories ===
+export async function getCustomCats(): Promise<Category[]> {
+  return db.custom_cats.toArray()
+}
+export async function addCustomCat(c: Category): Promise<string> {
+  return db.custom_cats.add(c)
+}
+export async function deleteCustomCat(id: string): Promise<void> {
+  return db.custom_cats.delete(id)
 }
 
 // === Search ===

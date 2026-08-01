@@ -4,7 +4,7 @@ import { recordAndRecognize } from '../utils/volcengine'
 import { parseVoiceTextMulti } from '../utils/voice'
 import { useStore } from '../store/useStore'
 import { getTodayISO } from '../utils/format'
-import { logout } from '../utils/api'
+import { logout, getGroup } from '../utils/api'
 
 const tabs = [
   { path: '/record',   label: '记账', icon: '✏️' },
@@ -16,7 +16,7 @@ const tabs = [
 
 export default function Layout() {
   const location = useLocation()
-  const { addBillRecord, expenseCategories, incomeCategories, syncStatus, currentUser, loadUser, initSync, teardownSync } = useStore()
+  const { addBillRecord, expenseCategories, incomeCategories, syncStatus, currentUser, loadUser, initSync, teardownSync, loadCustomCats } = useStore()
   const [isListening, setIsListening] = useState(false)
   const [voiceText, setVoiceText] = useState('')
   const [voiceError, setVoiceError] = useState('')
@@ -32,7 +32,7 @@ export default function Layout() {
   }, [dark])
 
   // V4: 加载用户 + 启动同步
-  useEffect(() => { loadUser(); initSync(); return () => teardownSync() }, [])
+  useEffect(() => { loadUser(); initSync(); loadCustomCats(); return () => teardownSync() }, [])
 
   // URL 参数自动记账 (如 ?amount=25&note=午餐)
   useEffect(() => {
@@ -143,6 +143,14 @@ export default function Layout() {
           <button onClick={logout} className="text-xs text-gray-400 hover:text-red-500">退出</button>
         </div>
       </div>
+      {/* Group info */}
+      {(() => { const g = getGroup(); return g ? (
+        <div className="flex items-center justify-between px-4 pb-1 shrink-0">
+          <span className="text-xs text-gray-400">{g.name} · {g.members.length}人</span>
+          <button onClick={() => { navigator.clipboard.writeText(g.invite_code); alert('邀请码已复制: ' + g.invite_code) }}
+            className="text-xs text-blue-400 hover:text-blue-600">邀请码: {g.invite_code}</button>
+        </div>
+      ) : null })()}
 
       {(voiceText || voiceError) && (
         <div className={`mx-4 mt-2 px-3 py-2 rounded-lg text-sm text-center shrink-0 ${

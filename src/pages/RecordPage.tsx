@@ -6,7 +6,7 @@ import { getTodayISO } from '../utils/format'
 
 export default function RecordPage() {
   const { expenseCategories, incomeCategories, accounts, loadAccounts, addBillRecord,
-    templates, loadTemplates, addTemplate } = useStore()
+    templates, loadTemplates, addTemplate, customCategories, addCustomCat, removeCustomCat } = useStore()
   const [billType, setBillType] = useState<'expense' | 'income'>('expense')
   const [showCategory, setShowCategory] = useState(false)
   const [categoryId, setCategoryId] = useState<string | null>(null)
@@ -151,7 +151,15 @@ export default function RecordPage() {
             </div>
           )}
           <div className="flex-1 overflow-auto">
-            <CategoryGrid categories={categories} selected={categoryId} onSelect={setCategoryId} />
+            <CategoryGrid
+              categories={categories}
+              selected={categoryId}
+              onSelect={setCategoryId}
+              customCategories={customCategories}
+              onAddCustom={addCustomCat}
+              onDeleteCustom={removeCustomCat}
+              billType={billType}
+            />
           </div>
           <div className="flex gap-2 mb-4">
             <button onClick={handleSubmit} disabled={!categoryId || amountFen === 0}
