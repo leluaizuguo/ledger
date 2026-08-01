@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../store/useStore'
 import { getAccounts, updateAccountBalance } from '../db'
 import { BillTemplate, RecurringBill } from '../types'
+import { getSyncServer, setSyncServer, healthCheck } from '../utils/api'
 
 export default function AccountPage() {
   const { accounts, loadAccounts,
@@ -10,7 +11,7 @@ export default function AccountPage() {
     installments, loadInstallments, addInstallment,
     bills,
   } = useStore()
-  const [tab, setTab] = useState<'accounts' | 'recurring' | 'templates' | 'installments' | 'saving'>('accounts')
+  const [tab, setTab] = useState<'accounts' | 'recurring' | 'templates' | 'installments' | 'saving' | 'sync'>('accounts')
 
   useEffect(() => { loadAccounts(); loadRecurrings(); loadTemplates(); loadInstallments() },
     [loadAccounts, loadRecurrings, loadTemplates, loadInstallments])
@@ -44,6 +45,7 @@ export default function AccountPage() {
           { id: 'templates', label: '模板' },
           { id: 'installments', label: '分期' },
           { id: 'saving', label: '存钱' },
+          { id: 'sync', label: '同步' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id as typeof tab)}
             className={`flex-1 py-2 text-sm ${tab === t.id ? 'text-yellow-500 border-b-2 border-yellow-400 font-medium' : 'text-gray-400'}`}>
@@ -140,6 +142,7 @@ export default function AccountPage() {
         )}
 
         {tab === 'saving' && <SavingGoal />}
+        {tab === 'sync' && <SyncSettings />}
       </div>
     </div>
   )
@@ -229,6 +232,66 @@ function AddTemplate({ onAdd, categories }: { onAdd: (t: Omit<BillTemplate, 'id'
       <div className="flex gap-2">
         <button onClick={async () => { const a = parseFloat(amount); if (!name || !a) return; await onAdd({ name, amount: Math.round(a * 100), type, categoryId: catId, accountId: 'wechat', note: name }); setName(''); setAmount(''); setShow(false) }} className="flex-1 py-2 bg-yellow-400 rounded text-sm font-medium">保存</button>
         <button onClick={() => setShow(false)} className="px-4 py-2 bg-gray-100 dark:bg-gray-700 dark:text-white rounded text-sm">取消</button>
+      </div>
+    </div>
+  )
+}
+
+function SyncSettings() {
+  const [url, setUrl] = useState(getSyncServer)
+  const [status, setStatus] = useState('')
+  const [testing, setTesting] = useState(false)
+
+  const handleSave = () => {
+    const trimmed = url.trim().replace(/\/+$/, '')
+    setSyncServer(trimmed)
+    setUrl(trimmed)
+    setStatus('已保存')
+    setTimeout(() => setStatus(''), 2000)
+  }
+
+  const handleTest = async () => {
+    setTesting(true)
+    setStatus('测试中...')
+    const trimmed = url.trim().replace(/\/+$/, '')
+    const old = getSyncServer()
+    setSyncServer(trimmed)
+    const ok = await healthCheck()
+    setTesting(false)
+    if (ok) {
+      setStatus('连接成功')
+    } else {
+      setStatus('连接失败')
+      setSyncServer(old)
+    }
+    setTimeout(() => setStatus(''), 3000)
+  }
+
+  return (
+    <div className="p-4 space-y-4">
+      <div>
+        <div className="text-sm text-gray-500 mb-1">同步服务器地址</div>
+        <input
+          type="text"
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="https://xxx.trycloudflare.com"
+          className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 dark:text-white rounded text-sm font-mono"
+        />
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleSave} className="flex-1 py-2 bg-yellow-400 rounded text-sm font-medium">保存</button>
+        <button onClick={handleTest} disabled={testing} className="flex-1 py-2 bg-gray-100 dark:bg-gray-700 dark:text-white rounded text-sm">
+          {testing ? '测试中...' : '测试连接'}
+        </button>
+      </div>
+      {status && (
+        <div className={`text-sm text-center ${status.includes('失败') ? 'text-red-500' : status.includes('成功') || status === '已保存' ? 'text-green-500' : 'text-gray-400'}`}>
+          {status}
+        </div>
+      )}
+      <div className="text-xs text-gray-400 mt-4">
+        <p>启动服务器后，将显示的 Cloudflare Tunnel 地址填入此处即可。</p>
       </div>
     </div>
   )

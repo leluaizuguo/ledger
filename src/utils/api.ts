@@ -1,4 +1,11 @@
-export const SYNC_SERVER = 'https://framework-male-wishing-amplifier.trycloudflare.com'
+const SK = 'lssrv'
+
+export function getSyncServer(): string {
+  return localStorage.getItem(SK) || 'http://localhost:8765'
+}
+export function setSyncServer(url: string): void {
+  localStorage.setItem(SK, url)
+}
 
 const TK = 'lstok'
 const UK = 'lsusr'
@@ -29,7 +36,7 @@ async function api(p: string, o: RequestInit = {}): Promise<any> {
   const t = getToken()
   const h: Record<string, string> = { 'Content-Type': 'application/json', ...(o.headers as Record<string, string> || {}) }
   if (t) h['Authorization'] = 'Bearer ' + t
-  const r = await fetch(SYNC_SERVER + p, { ...o, headers: h })
+  const r = await fetch(getSyncServer() + p, { ...o, headers: h })
   const d = await r.json()
   if (!r.ok) { if (r.status === 401) { clearToken(); window.location.hash = '#/login' }; throw new Error(d.detail || 'API error ' + r.status) }
   return d
@@ -47,4 +54,4 @@ export async function fetchGroup() { return api('/api/groups/info') }
 export type SyncBill = { client_id: string; amount: number; type: string; category_id: string; account_id: string; target_account_id?: string; note: string; date: string; is_reimbursable: boolean; reimbursed: boolean; installment_id?: number; image_data?: string; updated_at: number }
 export async function pushBills(did: string, bills: SyncBill[]) { return api('/api/sync/push', { method: 'POST', body: JSON.stringify({ device_id: did, bills }) }) }
 export async function pullBills(since: number, did: string) { return api('/api/sync/pull?since=' + since + '&device_id=' + did) }
-export async function healthCheck(): Promise<boolean> { try { const r = await fetch(SYNC_SERVER + '/api/health'); return r.ok } catch { return false } }
+export async function healthCheck(): Promise<boolean> { try { const r = await fetch(getSyncServer() + '/api/health'); return r.ok } catch { return false } }
