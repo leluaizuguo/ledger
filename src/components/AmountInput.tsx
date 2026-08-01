@@ -9,7 +9,6 @@ export default function AmountInput({ onConfirm }: Props) {
   const [input, setInput] = useState('0')
 
   const handleTap = (key: string) => {
-    if (key === 'C') { setInput('0'); return }
     if (key === '⌫') {
       setInput(prev => prev.length <= 1 ? '0' : prev.slice(0, -1))
       return
@@ -28,7 +27,7 @@ export default function AmountInput({ onConfirm }: Props) {
     return n.toFixed(2)
   })()
 
-  const keys = ['1','2','3','4','5','6','7','8','9','C','0','.','⌫']
+  const keys = ['1','2','3','4','5','6','7','8','9','.','0','⌫']
 
   return (
     <div className="px-4 pt-6">
@@ -43,9 +42,7 @@ export default function AmountInput({ onConfirm }: Props) {
           <button
             key={k}
             onClick={() => handleTap(k)}
-            className={`py-4 text-xl rounded-xl active:bg-gray-100 select-none ${
-              k === 'C' ? 'text-gray-400' : 'font-medium'
-            }`}
+            className="py-4 text-xl rounded-xl active:bg-gray-100 select-none font-medium"
           >
             {k}
           </button>
