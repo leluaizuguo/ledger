@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { Bill, Account, Category, BillTemplate, RecurringBill, Installment } from '../types'
 import { getCurrentMonth } from '../utils/format'
 import {
-  getBillsByMonth, addBill, deleteBill, getAccounts,
+  getBillsByMonth, addBill, deleteBill, updateBill, getAccounts,
   searchBills, getBudget, setBudget,
   getTemplates, saveTemplate, deleteTemplate,
   getRecurrings, saveRecurring, updateRecurring, deleteRecurring,
@@ -26,8 +26,10 @@ interface LedgerState {
   currentMonth: string
   setCurrentMonth: (m: string) => void
   bills: Bill[]
+  foreignBills: Bill[]
   loadBills: () => Promise<void>
   addBillRecord: (b: Omit<Bill, 'id' | 'createdAt' | 'client_id' | 'user_id'>) => Promise<number>
+  updateBillRecord: (id: number, changes: Partial<Bill>) => Promise<void>
   removeBill: (id: number) => Promise<void>
   accounts: Account[]
   loadAccounts: () => Promise<void>
@@ -59,6 +61,8 @@ interface LedgerState {
   checkRecurrings: () => Promise<void>
   syncStatus: SyncStatus
   syncMessage: string
+  syncConflicts: { client_id: string; local: Bill; remote: Bill }[]
+  resolveConflict: (client_id: string, keep: 'local' | 'remote') => Promise<void>
   currentUser: { id: number; username: string; display_name: string } | null
   deviceId: string
   initSync: () => void
@@ -70,9 +74,26 @@ export const useStore = create<LedgerState>((set, get) => ({
   currentMonth: getCurrentMonth(),
   setCurrentMonth: (m) => set({ currentMonth: m }),
   bills: [],
+  foreignBills: [],
   loadBills: async () => {
-    const { currentMonth, searchQuery } = get()
-    const bills = searchQuery ? await searchBills(searchQuery, currentMonth) : await getBillsByMonth(currentMonth)
+    const { currentMonth, searchQuery, foreignBills, currentUser } = get()
+    let bills: Bill[]
+    if (searchQuery) {
+      bills = await searchBills(searchQuery, currentMonth)
+    } else {
+      bills = await getBillsByMonth(currentMonth)
+    }
+    // Merge foreign bills (from server, not stored in Dexie) when logged in
+    if (currentUser && foreignBills.length > 0) {
+      const merged = [...bills]
+      for (const fb of foreignBills) {
+        if (fb.date && fb.date.startsWith(currentMonth)) {
+          merged.push(fb)
+        }
+      }
+      merged.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      bills = merged
+    }
     set({ bills })
   },
   addBillRecord: async (bill) => {
@@ -82,6 +103,10 @@ export const useStore = create<LedgerState>((set, get) => ({
     await get().loadBills(); await get().loadAccounts(); get().triggerRefresh()
     await get().checkRecurrings()
     return id
+  },
+  updateBillRecord: async (id, changes) => {
+    await updateBill(id, changes)
+    await get().loadBills(); await get().loadAccounts(); get().triggerRefresh()
   },
   removeBill: async (id) => {
     await deleteBill(id)
@@ -148,27 +173,77 @@ export const useStore = create<LedgerState>((set, get) => ({
   triggerRefresh: () => set(s => ({ refreshKey: s.refreshKey + 1 })),
   syncStatus: 'idle',
   syncMessage: '',
+  syncConflicts: [],
+  resolveConflict: async (client_id, keep) => {
+    const conflicts = get().syncConflicts
+    const idx = conflicts.findIndex(c => c.client_id === client_id)
+    if (idx < 0) return
+    const { local, remote } = conflicts[idx]
+    if (keep === 'local') {
+      // Keep local: update local's updatedAt so it gets pushed next cycle
+      await db.bills.update(local.id!, { updatedAt: Date.now() / 1000 })
+    } else {
+      // Keep remote: overwrite local with remote
+      await db.bills.update(local.id!, { ...remote, id: local.id })
+    }
+    const next = [...conflicts]
+    next.splice(idx, 1)
+    set({ syncConflicts: next })
+    await get().loadBills()
+    get().triggerRefresh()
+  },
   currentUser: null,
   deviceId: getDeviceId(),
   initSync: () => {
     setStatusListener((status, message) => { set({ syncStatus: status, syncMessage: message || '' }) })
     const getLocalBills = async () => await getAllBills()
     const saveRemote = async (remoteBills: Bill[]) => {
+      const userId = get().currentUser?.id || 0
+      const own: Bill[] = []
+      const foreign: Bill[] = []
       for (const rb of remoteBills) {
+        if (rb.user_id === userId) {
+          own.push(rb)
+        } else {
+          foreign.push(rb)
+        }
+      }
+      // Upsert own bills to Dexie, detect conflicts
+      const newConflicts: { client_id: string; local: Bill; remote: Bill }[] = []
+      for (const rb of own) {
         const existing = await db.bills.where('client_id').equals(rb.client_id).first()
         if (existing) {
-          if (!existing.updatedAt || (rb.updatedAt && rb.updatedAt > existing.updatedAt)) {
-            await db.bills.update(existing.id!, { ...rb, id: existing.id })
+          // Check for real data conflict (amount, type, category, account, note, date changed)
+          const differs = existing.amount !== rb.amount ||
+            existing.type !== rb.type ||
+            existing.categoryId !== rb.categoryId ||
+            existing.accountId !== rb.accountId ||
+            existing.note !== rb.note ||
+            existing.date !== rb.date
+          if (differs && existing.updatedAt && rb.updatedAt && rb.updatedAt > existing.updatedAt) {
+            // Remote is newer but data differs → conflict
+            newConflicts.push({ client_id: rb.client_id!, local: { ...existing }, remote: { ...rb } })
+          } else if (!differs || !existing.updatedAt || (rb.updatedAt && rb.updatedAt <= existing.updatedAt)) {
+            // No conflict: data same, or local is newer, or local has no timestamp
+            await db.bills.update(existing.id!, { ...rb, id: existing.id, updatedAt: existing.updatedAt || rb.updatedAt })
           }
         } else {
           await db.bills.add(rb)
         }
       }
+      if (newConflicts.length > 0) {
+        set(s => ({ syncConflicts: [...s.syncConflicts, ...newConflicts] }))
+      }
+      // Foreign bills stay in-memory only
+      set({ foreignBills: foreign })
       await get().loadBills()
       get().triggerRefresh()
     }
     startSync(getLocalBills, saveRemote)
   },
-  teardownSync: () => { stopSync() },
+  teardownSync: () => {
+    stopSync()
+    set({ foreignBills: [] })
+  },
   loadUser: () => { const u = getUser(); set({ currentUser: u }) },
 }))

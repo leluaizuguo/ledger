@@ -83,8 +83,16 @@ const DEFAULT_ACCOUNTS: Account[] = [
 export const db = new LedgerDB()
 
 // === Bill helpers ===
+function genClientId(): string {
+  return crypto.randomUUID ? crypto.randomUUID() :
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+    })
+}
+
 export async function addBill(bill: Omit<Bill, 'id' | 'createdAt'>): Promise<number> {
-  const id = await db.bills.add({ ...bill, createdAt: Date.now() })
+  const id = await db.bills.add({ ...bill, client_id: genClientId(), createdAt: Date.now() })
   const account = await db.accounts.get(bill.accountId)
   if (account) {
     let bc = 0
@@ -109,7 +117,53 @@ export async function deleteBill(id: number): Promise<void> {
     else if (bill.type === 'income' || bill.type === 'transfer_in') bc = -bill.amount
     if (bc !== 0) await db.accounts.update(bill.accountId, { balance: account.balance + bc })
   }
+  // Track deletion for sync
+  if (bill.client_id) {
+    const raw = localStorage.getItem('ls_del_q') || '[]'
+    try {
+      const q: string[] = JSON.parse(raw)
+      q.push(bill.client_id)
+      localStorage.setItem('ls_del_q', JSON.stringify(q))
+    } catch { /* ignore */ }
+  }
   return db.bills.delete(id)
+}
+
+export async function updateBill(id: number, changes: Partial<Bill>): Promise<number> {
+  const old = await db.bills.get(id)
+  if (!old) return 0
+
+  // Reverse old balance effect
+  const oldAccount = await db.accounts.get(old.accountId)
+  if (oldAccount) {
+    let bc = 0
+    if (old.type === 'expense' || old.type === 'transfer_out') bc = old.amount
+    else if (old.type === 'income' || old.type === 'transfer_in') bc = -old.amount
+    if (bc !== 0) await db.accounts.update(old.accountId, { balance: oldAccount.balance + bc })
+  }
+
+  // Apply new balance effect
+  const newAccountId = changes.accountId || old.accountId
+  const newAmount = changes.amount !== undefined ? changes.amount : old.amount
+  const newType = changes.type || old.type
+  const newAccount = await db.accounts.get(newAccountId)
+  if (newAccount) {
+    let bc = 0
+    if (newType === 'expense' || newType === 'transfer_out') bc = -newAmount
+    else if (newType === 'income' || newType === 'transfer_in') bc = newAmount
+    if (bc !== 0) await db.accounts.update(newAccountId, { balance: newAccount.balance + bc })
+  }
+
+  return db.bills.update(id, { ...changes, updatedAt: Date.now() / 1000 })
+}
+
+export function popPendingDeletes(): string[] {
+  const raw = localStorage.getItem('ls_del_q') || '[]'
+  try {
+    const q: string[] = JSON.parse(raw)
+    localStorage.removeItem('ls_del_q')
+    return q
+  } catch { return [] }
 }
 
 export async function getAllBills(): Promise<Bill[]> {
