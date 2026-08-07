@@ -35,6 +35,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // Force SW to differ on every build so browsers detect updates
+        additionalManifestEntries: [{
+          url: '/',
+          revision: String(Date.now()),
+        }],
       },
     }),
   ],
