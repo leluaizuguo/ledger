@@ -48,6 +48,7 @@ class SyncBill(BaseModel):
 class PushReq(BaseModel):
     device_id: str
     bills: List[SyncBill]
+    deleted_ids: List[str] = []
 
 
 def _get_user_group(db, user_id: int) -> Optional[int]:
@@ -77,6 +78,8 @@ def register(req: RegisterReq):
             db.close()
             raise HTTPException(400, "Invalid invite code")
         group_id, group_name = g["id"], g["name"]
+        # Mark group as shared
+        db.execute("UPDATE groups SET is_shared = 1 WHERE id = ?", (group_id,))
     else:
         code = gen_invite_code()
         # We need a group name, but user display_name is what we have
@@ -102,7 +105,7 @@ def register(req: RegisterReq):
     return {
         "token": token,
         "user": {"id": user_id, "username": req.username, "display_name": req.display_name},
-        "group": {"id": group_id, "name": group_name, "invite_code": invite, "members": members},
+        "group": {"id": group_id, "name": group_name, "invite_code": invite, "is_shared": bool(req.invite_code), "members": members},
     }
 
 
@@ -114,7 +117,7 @@ def login(req: LoginReq):
         db.close()
         raise HTTPException(401, "Invalid username or password")
 
-    g = db.execute("SELECT id, name, invite_code FROM groups WHERE id = ?", (user["group_id"],)).fetchone()
+    g = db.execute("SELECT id, name, invite_code, is_shared FROM groups WHERE id = ?", (user["group_id"],)).fetchone()
     members = _get_group_members(db, user["group_id"])
     db.close()
 
@@ -122,7 +125,7 @@ def login(req: LoginReq):
     return {
         "token": token,
         "user": {"id": user["id"], "username": user["username"], "display_name": user["display_name"]},
-        "group": {"id": g["id"], "name": g["name"], "invite_code": g["invite_code"], "members": members},
+        "group": {"id": g["id"], "name": g["name"], "invite_code": g["invite_code"], "is_shared": bool(g["is_shared"]), "members": members},
     }
 
 
@@ -133,12 +136,12 @@ def me(user=Depends(get_current_user)):
     if not u:
         db.close()
         raise HTTPException(404, "User not found")
-    g = db.execute("SELECT id, name, invite_code FROM groups WHERE id = ?", (u["group_id"],)).fetchone()
+    g = db.execute("SELECT id, name, invite_code, is_shared FROM groups WHERE id = ?", (u["group_id"],)).fetchone()
     members = _get_group_members(db, u["group_id"])
     db.close()
     return {
         "id": u["id"], "username": u["username"], "display_name": u["display_name"],
-        "group": {"id": g["id"], "name": g["name"], "invite_code": g["invite_code"], "members": members},
+        "group": {"id": g["id"], "name": g["name"], "invite_code": g["invite_code"], "is_shared": bool(g["is_shared"]), "members": members},
     }
 
 
@@ -150,10 +153,87 @@ def group_info(user=Depends(get_current_user)):
     if not gid:
         db.close()
         raise HTTPException(404, "No group")
-    g = db.execute("SELECT id, name, invite_code FROM groups WHERE id = ?", (gid,)).fetchone()
+    g = db.execute("SELECT id, name, invite_code, is_shared FROM groups WHERE id = ?", (gid,)).fetchone()
     members = _get_group_members(db, gid)
     db.close()
-    return {"id": g["id"], "name": g["name"], "invite_code": g["invite_code"], "members": members}
+    return {"id": g["id"], "name": g["name"], "invite_code": g["invite_code"], "is_shared": bool(g["is_shared"]), "members": members}
+
+
+# --- Leave group ---
+@app.post("/api/groups/leave")
+def leave_group(user=Depends(get_current_user)):
+    db = get_db()
+    uid = user["user_id"]
+    u = db.execute("SELECT display_name, group_id FROM users WHERE id = ?", (uid,)).fetchone()
+    if not u:
+        db.close()
+        raise HTTPException(404, "User not found")
+    old_gid = u["group_id"]
+
+    # Create new personal group
+    code = gen_invite_code()
+    db.execute(
+        "INSERT INTO groups (name, invite_code, created_by) VALUES (?, ?, ?)",
+        (u["display_name"] + "的家", code, uid),
+    )
+    new_gid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    # Move user to new group
+    db.execute("UPDATE users SET group_id = ? WHERE id = ?", (new_gid, uid))
+    # Move user's bills to new group
+    db.execute("UPDATE bills SET group_id = ? WHERE user_id = ? AND group_id = ?", (new_gid, uid, old_gid))
+    db.commit()
+
+    # Clean up old group if empty
+    remaining = db.execute("SELECT COUNT(*) as c FROM users WHERE group_id = ?", (old_gid,)).fetchone()["c"]
+    if remaining == 0:
+        db.execute("DELETE FROM bills WHERE group_id = ?", (old_gid,))
+        db.execute("DELETE FROM groups WHERE id = ?", (old_gid,))
+        db.commit()
+
+    g = db.execute("SELECT id, name, invite_code, is_shared FROM groups WHERE id = ?", (new_gid,)).fetchone()
+    members = _get_group_members(db, new_gid)
+    db.close()
+    return {"id": g["id"], "name": g["name"], "invite_code": g["invite_code"], "is_shared": False, "members": members}
+
+
+# --- Join group (when already logged in) ---
+class JoinReq(BaseModel):
+    invite_code: str
+
+@app.post("/api/groups/join")
+def join_group(req: JoinReq, user=Depends(get_current_user)):
+    db = get_db()
+    uid = user["user_id"]
+    old_gid = _get_user_group(db, uid)
+
+    g = db.execute("SELECT id, name FROM groups WHERE invite_code = ?", (req.invite_code,)).fetchone()
+    if not g:
+        db.close()
+        raise HTTPException(400, "Invalid invite code")
+    new_gid = g["id"]
+    if new_gid == old_gid:
+        db.close()
+        raise HTTPException(400, "Already in this group")
+
+    # Move user to new group
+    db.execute("UPDATE users SET group_id = ? WHERE id = ?", (new_gid, uid))
+    # Move user's bills to new group
+    db.execute("UPDATE bills SET group_id = ? WHERE user_id = ? AND group_id = ?", (new_gid, uid, old_gid))
+    # Mark target group as shared
+    db.execute("UPDATE groups SET is_shared = 1 WHERE id = ?", (new_gid,))
+    db.commit()
+
+    # Clean up old group if empty
+    remaining = db.execute("SELECT COUNT(*) as c FROM users WHERE group_id = ?", (old_gid,)).fetchone()["c"]
+    if remaining == 0:
+        db.execute("DELETE FROM bills WHERE group_id = ?", (old_gid,))
+        db.execute("DELETE FROM groups WHERE id = ?", (old_gid,))
+        db.commit()
+
+    members = _get_group_members(db, new_gid)
+    db.close()
+    return {"id": g["id"], "name": g["name"], "invite_code": req.invite_code, "is_shared": True, "members": members}
 
 
 # --- Sync Routes ---
@@ -170,20 +250,20 @@ def sync_push(req: PushReq, user=Depends(get_current_user)):
             (b.client_id, uid),
         ).fetchone()
 
+        now = time.time()
         if existing:
             db.execute(
                 "UPDATE bills SET amount=?, type=?, category_id=?, account_id=?, "
                 "target_account_id=?, note=?, date=?, is_reimbursable=?, "
                 "reimbursed=?, installment_id=?, image_data=?, "
-                "updated_at=MAX(updated_at, ?) WHERE id=?",
+                "updated_at=? WHERE id=?",
                 (b.amount, b.type, b.category_id, b.account_id,
                  b.target_account_id, b.note, b.date,
                  1 if b.is_reimbursable else 0, 1 if b.reimbursed else 0,
-                 b.installment_id, b.image_data, b.updated_at, existing["id"]),
+                 b.installment_id, b.image_data, now, existing["id"]),
             )
             mapped.append({"client_id": b.client_id, "server_id": existing["id"]})
         else:
-            now = time.time()
             cur = db.execute(
                 "INSERT INTO bills (client_id, user_id, group_id, amount, type, category_id, account_id, "
                 "target_account_id, note, date, is_reimbursable, reimbursed, "
@@ -192,9 +272,24 @@ def sync_push(req: PushReq, user=Depends(get_current_user)):
                 (b.client_id, uid, gid, b.amount, b.type, b.category_id, b.account_id,
                  b.target_account_id, b.note, b.date,
                  1 if b.is_reimbursable else 0, 1 if b.reimbursed else 0,
-                 b.installment_id, b.image_data, now, b.updated_at),
+                 b.installment_id, b.image_data, now, now),
             )
             mapped.append({"client_id": b.client_id, "server_id": cur.lastrowid})
+
+    db.commit()
+
+    # Process deletions
+    if req.deleted_ids:
+        now2 = time.time()
+        for cid in req.deleted_ids:
+            cur = db.execute(
+                "UPDATE bills SET deleted_at = ?, updated_at = ? WHERE client_id = ? AND user_id = ?",
+                (now2, now2, cid, uid),
+            )
+            if cur.rowcount == 0:
+                print(f"[DELETE DEBUG] No match for client_id={cid}, user_id={uid}", flush=True)
+            else:
+                print(f"[DELETE DEBUG] Deleted client_id={cid}, rows={cur.rowcount}", flush=True)
 
     db.commit()
     db.close()
@@ -213,10 +308,10 @@ def sync_pull(since: float = 0, device_id: str = "", user=Depends(get_current_us
             (device_id, time.time(), time.time()),
         )
 
-    # Pull ALL bills in the group (not just current user)
+    # Return ALL active bills in the group (full sync — server is source of truth)
     rows = db.execute(
-        "SELECT * FROM bills WHERE group_id = ? AND updated_at > ? ORDER BY updated_at",
-        (gid, since),
+        "SELECT * FROM bills WHERE group_id = ? AND deleted_at IS NULL ORDER BY date DESC, id DESC",
+        (gid,),
     ).fetchall()
 
     bills = []
@@ -230,6 +325,7 @@ def sync_pull(since: float = 0, device_id: str = "", user=Depends(get_current_us
             "is_reimbursable": bool(r["is_reimbursable"]),
             "reimbursed": bool(r["reimbursed"]),
             "installment_id": r["installment_id"], "image_data": r["image_data"],
+            "created_at": r["created_at"],
             "updated_at": r["updated_at"],
         })
         user_ids.add(r["user_id"])

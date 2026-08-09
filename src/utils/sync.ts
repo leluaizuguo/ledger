@@ -99,7 +99,7 @@ export function startSync(
           targetAccountId: rb.target_account_id,
           note: rb.note,
           date: rb.date,
-          createdAt: Date.now(),
+          createdAt: rb.created_at || Date.now(),
           updatedAt: rb.updated_at,
           isReimbursable: rb.is_reimbursable,
           reimbursed: rb.reimbursed,

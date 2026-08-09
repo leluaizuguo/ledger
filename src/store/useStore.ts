@@ -91,7 +91,7 @@ export const useStore = create<LedgerState>((set, get) => ({
           merged.push(fb)
         }
       }
-      merged.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      merged.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0))
       bills = merged
     }
     set({ bills })
