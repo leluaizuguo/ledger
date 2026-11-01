@@ -144,9 +144,14 @@ export default function Layout() {
           <div className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${
               syncStatus === 'syncing' ? 'bg-yellow-400 animate-pulse' :
-              syncStatus === 'error' ? 'bg-red-400' : 'bg-green-400'
+              syncStatus === 'error' ? 'bg-red-400' :
+              syncStatus === 'offline' ? 'bg-orange-400' : 'bg-green-400'
             }`} />
-            <span className="text-xs text-gray-400">{syncStatus === 'syncing' ? '同步中' : syncStatus === 'error' ? '失败' : '在线'}</span>
+            <span className="text-xs text-gray-400">{
+              syncStatus === 'syncing' ? '同步中' :
+              syncStatus === 'error' ? '失败' :
+              syncStatus === 'offline' ? '离线' : '在线'
+            }</span>
           </div>
         ) : (
           <span className="text-xs text-gray-400">本地模式</span>
