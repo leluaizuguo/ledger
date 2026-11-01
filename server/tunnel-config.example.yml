@@ -1,0 +1,17 @@
+# Cloudflare Named Tunnel 配置模板
+#
+# 用法：复制成 tunnel-config.yml 再填入自己的值。
+# tunnel-config.yml 已被 .gitignore 排除，不会提交到仓库（里面有 tunnel UUID 和本机路径）。
+#
+#   cp server/tunnel-config.example.yml server/tunnel-config.yml
+#
+# 创建隧道：cloudflared tunnel create <名字>
+# 绑定域名：cloudflared tunnel route dns <名字> <域名>
+
+tunnel: <你的-tunnel-UUID>
+credentials-file: C:\Users\<用户名>\.cloudflared\<你的-tunnel-UUID>.json
+
+ingress:
+  - hostname: <你的域名示例.example.com>
+    service: http://localhost:8765
+  - service: http_status:404
