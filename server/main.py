@@ -248,14 +248,11 @@ def join_group(req: JoinReq, user=Depends(get_current_user)):
 
 
 # --- Sync Routes ---
-@app.post("/api/sync/push")
-def sync_push(req: PushReq, user=Depends(get_current_user)):
-    db = get_db()
-    uid = user["user_id"]
-    gid = _get_user_group(db, uid)
-    mapped = []
 
-    for b in req.bills:
+def _push_bills(db, uid: int, gid: int, bills, deleted_ids) -> list:
+    """写入客户端改动，返回 client_id -> server_id 映射。不改动连接生命周期。"""
+    mapped = []
+    for b in bills:
         existing = db.execute(
             "SELECT id FROM bills WHERE client_id = ? AND user_id = ?",
             (b.client_id, uid),
@@ -290,9 +287,9 @@ def sync_push(req: PushReq, user=Depends(get_current_user)):
     db.commit()
 
     # Process deletions
-    if req.deleted_ids:
+    if deleted_ids:
         now2 = time.time()
-        for cid in req.deleted_ids:
+        for cid in deleted_ids:
             cur = db.execute(
                 "UPDATE bills SET deleted_at = ?, updated_at = ? WHERE client_id = ? AND user_id = ?",
                 (now2, now2, cid, uid),
@@ -303,23 +300,21 @@ def sync_push(req: PushReq, user=Depends(get_current_user)):
                 print(f"[DELETE DEBUG] Deleted client_id={cid}, rows={cur.rowcount}", flush=True)
 
     db.commit()
-    db.close()
-    return {"ok": True, "mapped": mapped}
+    return mapped
 
 
-@app.get("/api/sync/pull")
-def sync_pull(since: float = 0, device_id: str = "", user=Depends(get_current_user)):
-    db = get_db()
-    gid = _get_user_group(db, user["user_id"])
+def _touch_sync_log(db, device_id: str) -> None:
+    if not device_id:
+        return
+    db.execute(
+        "INSERT INTO sync_log (device_id, last_pull_at) VALUES (?, ?) "
+        "ON CONFLICT(device_id) DO UPDATE SET last_pull_at = ?",
+        (device_id, time.time(), time.time()),
+    )
 
-    if device_id:
-        db.execute(
-            "INSERT INTO sync_log (device_id, last_pull_at) VALUES (?, ?) "
-            "ON CONFLICT(device_id) DO UPDATE SET last_pull_at = ?",
-            (device_id, time.time(), time.time()),
-        )
 
-    # Return ALL active bills in the group (full sync — server is source of truth)
+def _pull_bills(db, gid: int) -> list:
+    """返回圈子内全部活跃账单（含 display_name）。不改动连接生命周期。"""
     rows = db.execute(
         "SELECT * FROM bills WHERE group_id = ? AND deleted_at IS NULL ORDER BY date DESC, id DESC",
         (gid,),
@@ -350,11 +345,50 @@ def sync_pull(since: float = 0, device_id: str = "", user=Depends(get_current_us
         ).fetchall()
         users_map = {u["id"]: u["display_name"] for u in urows}
 
-    db.close()
-
     for b in bills:
         b["display_name"] = users_map.get(b["user_id"], "unknown")
 
+    return bills
+
+
+@app.post("/api/sync")
+def sync_all(req: PushReq, user=Depends(get_current_user)):
+    """Merge push + pull into ONE round trip.
+
+    客户端只等一次 RTT 而不是三次（healthCheck + push + pull）。
+    在往返延迟高的链路上（如 Cloudflare 隧道绕路 2-6s），同步耗时直接降到 1/3。
+    """
+    db = get_db()
+    uid = user["user_id"]
+    gid = _get_user_group(db, uid)
+
+    mapped = _push_bills(db, uid, gid, req.bills, req.deleted_ids)
+    _touch_sync_log(db, req.device_id)
+    bills = _pull_bills(db, gid)
+    db.commit()
+    db.close()
+    return {"ok": True, "mapped": mapped, "bills": bills, "server_time": time.time()}
+
+
+# --- 以下两个接口保留给未更新的旧客户端 ---
+@app.post("/api/sync/push")
+def sync_push(req: PushReq, user=Depends(get_current_user)):
+    db = get_db()
+    uid = user["user_id"]
+    gid = _get_user_group(db, uid)
+    mapped = _push_bills(db, uid, gid, req.bills, req.deleted_ids)
+    db.close()
+    return {"ok": True, "mapped": mapped}
+
+
+@app.get("/api/sync/pull")
+def sync_pull(since: float = 0, device_id: str = "", user=Depends(get_current_user)):
+    db = get_db()
+    gid = _get_user_group(db, user["user_id"])
+    _touch_sync_log(db, device_id)
+    bills = _pull_bills(db, gid)
+    db.commit()
+    db.close()
     return {"bills": bills, "server_time": time.time()}
 
 

@@ -32,3 +32,4 @@ server/*.log
 
 # 本机隧道配置（含 tunnel UUID / 本机路径），只保留 example 模板
 server/tunnel-config.yml
+server/*.bak

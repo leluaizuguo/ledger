@@ -36,7 +36,15 @@ async function api(p: string, o: RequestInit = {}): Promise<any> {
   const t = getToken()
   const h: Record<string, string> = { 'Content-Type': 'application/json', ...(o.headers as Record<string, string> || {}) }
   if (t) h['Authorization'] = 'Bearer ' + t
-  const r = await fetch(getSyncServer() + p, { ...o, headers: h })
+  let r: Response
+  try {
+    r = await fetch(getSyncServer() + p, { ...o, headers: h })
+  } catch (e: any) {
+    // 网络层失败（离线 / 服务器不可达 / 隧道断开）—— 与 HTTP 错误区分开
+    const err: any = new Error('network')
+    err.offline = true
+    throw err
+  }
   const d = await r.json()
   if (!r.ok) { if (r.status === 401) { clearToken(); window.location.hash = '#/login' }; throw new Error(d.detail || 'API error ' + r.status) }
   return d
@@ -56,4 +64,8 @@ export async function joinGroup(invite_code: string) { return api('/api/groups/j
 export type SyncBill = { client_id: string; amount: number; type: string; category_id: string; account_id: string; target_account_id?: string; note: string; date: string; is_reimbursable: boolean; reimbursed: boolean; installment_id?: number; image_data?: string; updated_at: number }
 export async function pushBills(did: string, bills: SyncBill[], deletedIds: string[] = []) { return api('/api/sync/push', { method: 'POST', body: JSON.stringify({ device_id: did, bills, deleted_ids: deletedIds }) }) }
 export async function pullBills(since: number, did: string) { return api('/api/sync/pull?since=' + since + '&device_id=' + did) }
+/** 一次往返完成 push + pull。链路上省掉 2 个 RTT（原 healthCheck + push + pull 三次串行）。 */
+export async function syncAll(did: string, bills: SyncBill[], deletedIds: string[] = []) {
+  return api('/api/sync', { method: 'POST', body: JSON.stringify({ device_id: did, bills, deleted_ids: deletedIds }) })
+}
 export async function healthCheck(): Promise<boolean> { try { const r = await fetch(getSyncServer() + '/api/health'); return r.ok } catch { return false } }

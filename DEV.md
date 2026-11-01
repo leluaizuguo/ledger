@@ -1,4 +1,4 @@
-# 记账 — 开发文档 v0.11.1
+# 记账 — 开发文档 v0.12.0
 
 ## 技术栈
 
@@ -66,7 +66,12 @@ src/
 - 用户主动登录后启动同步引擎
 - 登录态存 localStorage (JWT token)
 - 服务器地址通过「资产 → 同步」tab 配置，存 localStorage
-- 同步间隔 3 秒，全量 push + pull
+- 同步间隔 3 秒，全量 push + pull，**合并成一次请求 `POST /api/sync`**
+  （原先是 healthCheck + push + pull 三次串行，链路上每个 RTT 2-6 秒时，一次同步要等 6-18 秒；合并后只等 1 个 RTT）
+- 圈子信息 `GET /api/groups/info` 每 10 轮刷新一次，不再每轮都调（又是一个 RTT）
+- 离线判定：`api()` 里捕获 fetch 的网络异常并标记 `err.offline`，sync 据此置 offline 状态，不再单独打 healthCheck
+- 删除队列分两步 `peekPendingDeletes` / `clearPendingDeletes`：服务端确认收下才清队列，请求失败保留以便重试
+- 旧接口 `/api/sync/push`、`/api/sync/pull` 保留，未更新的客户端（手机上没刷新的旧版）照常工作
 - **竞态保护**：push 开始时记录时间戳，pull 后删除本地多余账单时跳过 push 之后新增的记录
 
 ## 数据库 Schema (Dexie v6)
@@ -124,6 +129,7 @@ npm run deploy       # 部署到 GitHub Pages
 
 | 版本 | 更新 |
 |------|------|
+| v0.12.0 | 同步合并为单次请求：`POST /api/sync` 一次完成 push+pull，去掉 healthCheck 预检，圈子信息改为每 10 轮刷新。高延迟链路上同步耗时降到约 1/3 |
 | v0.11.1 | 修复顶部同步状态不显示「离线」：syncStatus=offline 时圆点转橙色、文字显示离线（原来 idle/offline 都显示在线） |
 | v0.11.0 | 圈子账单离线可见：他人账单落 IndexedDB（Dexie v6 新增 foreign_bills 表），启动时先读缓存再联网；同步过一次后断网/服务器宕机也能看到全部账单 |
 | v0.10.0 | 图表分析新增查看范围筛选：整体/我/圈子各成员，结余/趋势/饼图/排行按人统计，预算保持家庭口径 |

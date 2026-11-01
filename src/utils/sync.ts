@@ -1,10 +1,11 @@
-import { pushBills, pullBills, healthCheck, SyncBill, getToken, fetchGroup, setGroup } from './api'
+import { syncAll, SyncBill, getToken, fetchGroup, setGroup } from './api'
 import { Bill } from '../types'
-import { popPendingDeletes } from '../db'
+import { peekPendingDeletes, clearPendingDeletes } from '../db'
 
 let syncTimer: ReturnType<typeof setInterval> | null = null
 let isSyncing = false
 let lastPullTime = 0
+let groupSyncCounter = 0
 const DID = 'd' + Math.random().toString(36).slice(2, 10)
 const INTERVAL = 3
 
@@ -27,17 +28,14 @@ export function startSync(
     if (isSyncing) return
     if (!getToken()) { setStatus('idle'); return }
 
-    const online = await healthCheck()
-    if (!online) { setStatus('offline', 'Server unreachable'); return }
-
     isSyncing = true
     setStatus('syncing')
 
     try {
-      // Push all local bills (full sync — eliminates clock-skew bugs)
+      // 全量 push（幂等，规避时钟偏移问题）
       const pushStartTime = Date.now() / 1000  // snapshot before push, to protect newly-added bills from deletion
       const localBills = await getLocalBills()
-      const deletedIds = popPendingDeletes()
+      const deletedIds = peekPendingDeletes()
       const sb: SyncBill[] = localBills.map(b => ({
         client_id: b.client_id,
         amount: b.amount,
@@ -53,10 +51,17 @@ export function startSync(
         image_data: b.imageData,
         updated_at: b.updatedAt || Date.now() / 1000,
       }))
-      await pushBills(DID, sb, deletedIds)
 
-      // Pull (full sync — server is source of truth)
-      const result = await pullBills(lastPullTime, DID)
+      // 一次往返：push + pull 合并（原来 healthCheck + push + pull 要三个串行 RTT）
+      let result: any
+      try {
+        result = await syncAll(DID, sb, deletedIds)
+      } catch (e: any) {
+        if (e?.offline) { setStatus('offline', 'Server unreachable'); return }
+        throw e
+      }
+      // 确认服务端收下了才清删除队列；失败时队列保留，下次重试
+      clearPendingDeletes(deletedIds)
 
       // Delete local bills that no longer exist on server
       // BUT skip bills added/modified after pushStartTime — they were created
@@ -112,11 +117,14 @@ export function startSync(
       lastPullTime = result.server_time
       setStatus('idle')
 
-      // Refresh group info every sync cycle
-      try {
-        const g = await fetchGroup()
-        if (g) setGroup(g)
-      } catch { /* ignore */ }
+      // 圈子信息每 10 轮刷新一次即可（成员变动不需要 3 秒级实时），
+      // 否则每轮同步等于又多一个 RTT，正好抵消掉合并请求省下的钱
+      if (groupSyncCounter++ % 10 === 0) {
+        try {
+          const g = await fetchGroup()
+          if (g) setGroup(g)
+        } catch { /* ignore */ }
+      }
     } catch (e: any) {
       console.error('Sync error:', e)
       setStatus('error', e.message || 'Sync failed')

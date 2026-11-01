@@ -180,6 +180,25 @@ export function popPendingDeletes(): string[] {
   } catch { return [] }
 }
 
+/** 只看不清 —— 网络失败时删除队列必须留着，否则这次删除就永久丢了 */
+export function peekPendingDeletes(): string[] {
+  const raw = localStorage.getItem('ls_del_q') || '[]'
+  try { return JSON.parse(raw) } catch { return [] }
+}
+
+/** 请求成功后再移出队列。只移除本次已提交的，期间新增的保留 */
+export function clearPendingDeletes(sent: string[]): void {
+  if (!sent.length) return
+  const raw = localStorage.getItem('ls_del_q') || '[]'
+  try {
+    const q: string[] = JSON.parse(raw)
+    const done = new Set(sent)
+    const left = q.filter(id => !done.has(id))
+    if (left.length > 0) localStorage.setItem('ls_del_q', JSON.stringify(left))
+    else localStorage.removeItem('ls_del_q')
+  } catch { /* ignore */ }
+}
+
 export async function getAllBills(): Promise<Bill[]> {
   return db.bills.orderBy('createdAt').reverse().toArray()
 }
