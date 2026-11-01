@@ -4,7 +4,7 @@ import { recordAndRecognize } from '../utils/volcengine'
 import { parseVoiceTextMulti } from '../utils/voice'
 import { useStore } from '../store/useStore'
 import { getTodayISO } from '../utils/format'
-import { logout, getGroup, isLoggedIn } from '../utils/api'
+import { logout, getGroup, isLoggedIn, leaveGroup, joinGroup, setGroup } from '../utils/api'
 
 const tabs = [
   { path: '/record',   label: '记账', icon: '✏️' },
@@ -161,11 +161,36 @@ export default function Layout() {
         </div>
       </div>
       {/* Group info */}
-      {(() => { const g = getGroup(); return g ? (
-        <div className="flex items-center justify-between px-4 pb-1 shrink-0">
-          <span className="text-xs text-gray-400">{g.name} · {g.members.length}人</span>
-          <button onClick={() => { navigator.clipboard.writeText(g.invite_code); alert('邀请码已复制: ' + g.invite_code) }}
-            className="text-xs text-blue-400 hover:text-blue-600">邀请码: {g.invite_code}</button>
+      {(() => { const g = getGroup(); return isLoggedIn() && g && g.is_shared ? (
+        <div className="flex flex-col px-4 pb-1 shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-400">{g.name} · {g.members.length}人</span>
+            <button onClick={() => { navigator.clipboard.writeText(g.invite_code) }}
+              className="text-xs text-blue-400 hover:text-blue-600">邀请码: {g.invite_code}</button>
+          </div>
+          <div className="flex gap-2 mt-1">
+            <button onClick={async () => {
+              if (!confirm('退出当前圈子？你的账单会保留，但不再与其他人共享。')) return
+              try {
+                const ng = await leaveGroup()
+                setGroup(ng)
+                window.location.reload()
+              } catch (e: any) { alert(e.message || '退出失败') }
+            }}
+              className="text-xs text-red-400 hover:text-red-600">退出圈子</button>
+          </div>
+        </div>
+      ) : isLoggedIn() ? (
+        <div className="flex px-4 pb-1 shrink-0">
+          <button onClick={() => {
+            const code = prompt('输入邀请码加入新圈子：')
+            if (!code) return
+            joinGroup(code).then(ng => {
+              setGroup(ng)
+              window.location.reload()
+            }).catch((e: any) => alert(e.message || '加入失败'))
+          }}
+            className="text-xs text-green-500 hover:text-green-700">加入圈子</button>
         </div>
       ) : null })()}
 
@@ -190,6 +215,37 @@ export default function Layout() {
       </div>
 
       <div className="flex-1 overflow-auto relative">
+        {(() => {
+          const { syncConflicts, resolveConflict } = useStore.getState()
+          if (syncConflicts.length === 0) return null
+          return (
+            <div className="mx-4 mt-2 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+              <div className="text-sm font-medium text-orange-700 dark:text-orange-300 mb-2">
+                {syncConflicts.length} 条账单有冲突
+              </div>
+              {syncConflicts.map(c => (
+                <div key={c.client_id} className="flex items-center justify-between py-1 text-xs">
+                  <span className="text-gray-600 dark:text-gray-400 truncate flex-1">
+                    {c.local.note || c.remote.note} ¥{(c.local.amount / 100).toFixed(2)}
+                    <span className="text-gray-400 ml-1">
+                      (本地 vs 远程: ¥{(c.remote.amount / 100).toFixed(2)})
+                    </span>
+                  </span>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => resolveConflict(c.client_id, 'local')}
+                      className="px-2 py-0.5 bg-white dark:bg-gray-700 rounded text-gray-700 dark:text-gray-300">
+                      保留本地
+                    </button>
+                    <button onClick={() => resolveConflict(c.client_id, 'remote')}
+                      className="px-2 py-0.5 bg-orange-500 text-white rounded">
+                      保留远程
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
         <Outlet />
       </div>
 

@@ -1,7 +1,7 @@
 const SK = 'lssrv'
 
 export function getSyncServer(): string {
-  return localStorage.getItem(SK) || 'http://localhost:8765'
+  return localStorage.getItem(SK) || 'https://ledger.lelihome.vip'
 }
 export function setSyncServer(url: string): void {
   localStorage.setItem(SK, url)
@@ -11,7 +11,7 @@ const TK = 'lstok'
 const UK = 'lsusr'
 const GK = 'lsgrp'
 
-export type GroupInfo = { id: number; name: string; invite_code: string; members: { id: number; username: string; display_name: string }[] }
+export type GroupInfo = { id: number; name: string; invite_code: string; is_shared: boolean; members: { id: number; username: string; display_name: string }[] }
 
 export function getToken(): string | null { return localStorage.getItem(TK) }
 export function setToken(t: string): void { localStorage.setItem(TK, t) }
@@ -50,8 +50,10 @@ export async function login(u: string, pw: string) {
 }
 export async function fetchMe() { return api('/api/auth/me') }
 export async function fetchGroup() { return api('/api/groups/info') }
+export async function leaveGroup() { return api('/api/groups/leave', { method: 'POST' }) }
+export async function joinGroup(invite_code: string) { return api('/api/groups/join', { method: 'POST', body: JSON.stringify({ invite_code }) }) }
 
 export type SyncBill = { client_id: string; amount: number; type: string; category_id: string; account_id: string; target_account_id?: string; note: string; date: string; is_reimbursable: boolean; reimbursed: boolean; installment_id?: number; image_data?: string; updated_at: number }
-export async function pushBills(did: string, bills: SyncBill[]) { return api('/api/sync/push', { method: 'POST', body: JSON.stringify({ device_id: did, bills }) }) }
+export async function pushBills(did: string, bills: SyncBill[], deletedIds: string[] = []) { return api('/api/sync/push', { method: 'POST', body: JSON.stringify({ device_id: did, bills, deleted_ids: deletedIds }) }) }
 export async function pullBills(since: number, did: string) { return api('/api/sync/pull?since=' + since + '&device_id=' + did) }
 export async function healthCheck(): Promise<boolean> { try { const r = await fetch(getSyncServer() + '/api/health'); return r.ok } catch { return false } }

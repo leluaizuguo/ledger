@@ -24,6 +24,7 @@ def init_db():
             name TEXT NOT NULL,
             invite_code TEXT NOT NULL UNIQUE,
             created_by INTEGER NOT NULL,
+            is_shared INTEGER NOT NULL DEFAULT 0,
             created_at REAL NOT NULL DEFAULT (unixepoch())
         );
 
@@ -74,6 +75,14 @@ def init_db():
         conn.execute("ALTER TABLE bills ADD COLUMN group_id INTEGER NOT NULL DEFAULT 0")
     except sqlite3.OperationalError:
         pass
+    try:
+        conn.execute("ALTER TABLE bills ADD COLUMN deleted_at REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        conn.execute("ALTER TABLE groups ADD COLUMN is_shared INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
 
     # If any users have group_id=0, create a default group for them
     orphan = conn.execute("SELECT id FROM users WHERE group_id = 0 LIMIT 1").fetchone()
@@ -86,6 +95,12 @@ def init_db():
         gid = conn.execute("SELECT id FROM groups WHERE invite_code = ?", (code,)).fetchone()["id"]
         conn.execute("UPDATE users SET group_id = ? WHERE group_id = 0", (gid,))
         conn.execute("UPDATE bills SET group_id = ? WHERE group_id = 0", (gid,))
+
+    # Mark groups with >1 member as shared
+    conn.execute("""
+        UPDATE groups SET is_shared = 1
+        WHERE id IN (SELECT group_id FROM users GROUP BY group_id HAVING COUNT(*) > 1)
+    """)
 
     conn.commit()
     conn.close()

@@ -3,6 +3,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAx
 import { useStore } from '../store/useStore'
 import { getBillsByMonth } from '../db'
 import { getCurrentMonth } from '../utils/format'
+import { getGroup } from '../utils/api'
+import { Bill } from '../types'
 
 const CHART_COLORS = [
   '#facc15','#f97316','#ef4444','#06b6d4','#8b5cf6',
@@ -11,14 +13,57 @@ const CHART_COLORS = [
 ]
 
 export default function ChartPage() {
-  const { bills, currentMonth, loadBills, refreshKey, expenseCategories, budget, loadBudget, saveBudget } = useStore()
+  const { bills, currentMonth, loadBills, refreshKey, expenseCategories, budget, loadBudget, saveBudget, foreignBills, currentUser } = useStore()
   const [trendData, setTrendData] = useState<{ month: string; expense: number; income: number }[]>([])
   const [showBudgetInput, setShowBudgetInput] = useState(false)
   const [budgetInput, setBudgetInput] = useState('')
+  // 查看范围: 'all' 整体 | 'me' 自己 | 'u<id>' 某圈子成员
+  const [scope, setScope] = useState('all')
+
+  const meId = currentUser?.id
+
+  // 账单归属: 自己 user_id 为 0/缺省（本地老账）或等于我的 id（pull 回来后带上）
+  // 未登录时没有"他人"概念，一律视为自己
+  const ownerKey = (b: Bill): string => {
+    if (!meId) return 'me'
+    if (b.user_id && b.user_id > 0 && b.user_id !== meId) return 'u' + b.user_id
+    return 'me'
+  }
+
+  // 筛选选项: 整体 + 我 + 圈子各成员（优先 group members，兜底从当月账单推导）
+  const scopeOptions = useMemo(() => {
+    const opts: { key: string; name: string }[] = [{ key: 'all', name: '整体' }]
+    const meName = currentUser?.display_name || '我'
+    opts.push({ key: 'me', name: meName })
+    const g = getGroup()
+    const members = g?.members?.filter(m => !meId || m.id !== meId) || []
+    const known = new Set<number>(members.map(m => m.id))
+    for (const m of members) opts.push({ key: 'u' + m.id, name: m.display_name })
+    // 兜底: group 信息缺失时，当月账单里出现的他人也列出来
+    for (const b of bills) {
+      const id = b.user_id
+      if (id && id > 0 && id !== meId && !known.has(id)) {
+        known.add(id)
+        opts.push({ key: 'u' + id, name: b.display_name || ('成员' + id) })
+      }
+    }
+    return opts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, bills, refreshKey])
+
+  const scopeBills = useMemo(() =>
+    scope === 'all' ? bills : bills.filter(b => ownerKey(b) === scope),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [bills, scope, meId])
+
+  // 预算口径保持家庭整体（不受个人筛选影响）
+  const allExpense = useMemo(() =>
+    bills.filter(b => b.type === 'expense').reduce((s, b) => s + b.amount, 0),
+  [bills])
 
   useEffect(() => { loadBills(); loadBudget() }, [currentMonth, refreshKey, loadBills, loadBudget])
 
-  // 近6月趋势
+  // 近6月趋势（按查看范围）
   useEffect(() => {
     (async () => {
       const now = new Date()
@@ -26,22 +71,30 @@ export default function ChartPage() {
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-        const b = await getBillsByMonth(key)
+        const own = await getBillsByMonth(key) // Dexie 只存自己的账单（历史）
+        const monthForeign = foreignBills.filter(fb => fb.date && fb.date.startsWith(key))
+        let pool: Bill[]
+        if (scope === 'all') pool = [...own, ...monthForeign]
+        else if (scope === 'me') pool = own
+        else {
+          const uid = Number(scope.slice(1))
+          pool = monthForeign.filter(fb => fb.user_id === uid)
+        }
         months.push({
           month: key.slice(5) + '月',
-          expense: (b.filter(x => x.type === 'expense').reduce((s, x) => s + x.amount, 0) / 100),
-          income: (b.filter(x => x.type === 'income').reduce((s, x) => s + x.amount, 0) / 100),
+          expense: (pool.filter(x => x.type === 'expense').reduce((s, x) => s + x.amount, 0) / 100),
+          income: (pool.filter(x => x.type === 'income').reduce((s, x) => s + x.amount, 0) / 100),
         })
       }
       setTrendData(months)
     })()
-  }, [currentMonth, refreshKey])
+  }, [currentMonth, refreshKey, scope, foreignBills])
 
   const stats = useMemo(() => {
-    const totalExpense = bills.filter(b => b.type === 'expense').reduce((s, b) => s + b.amount, 0)
-    const totalIncome = bills.filter(b => b.type === 'income').reduce((s, b) => s + b.amount, 0)
+    const totalExpense = scopeBills.filter(b => b.type === 'expense').reduce((s, b) => s + b.amount, 0)
+    const totalIncome = scopeBills.filter(b => b.type === 'income').reduce((s, b) => s + b.amount, 0)
     const catMap: Record<string, number> = {}
-    for (const b of bills) {
+    for (const b of scopeBills) {
       if (b.type !== 'expense') continue
       catMap[b.categoryId] = (catMap[b.categoryId] || 0) + b.amount
     }
@@ -55,10 +108,11 @@ export default function ChartPage() {
     return { totalExpense, totalIncome, balance: totalIncome - totalExpense, breakdown,
       dailyAvg: totalExpense / Math.max(new Date().getDate(), 1),
     }
-  }, [bills, expenseCategories])
+  }, [scopeBills, expenseCategories])
 
   const pieData = stats.breakdown.map(b => ({ name: b.name, value: b.amount / 100 }))
-  const budgetPercent = budget && budget > 0 ? Math.min(stats.totalExpense / budget * 100, 100) : 0
+  const budgetPercent = budget && budget > 0 ? Math.min(allExpense / budget * 100, 100) : 0
+  const activeName = scopeOptions.find(o => o.key === scope)?.name || '整体'
 
   // 环比变化
   const momChange = trendData.length >= 2
@@ -67,9 +121,22 @@ export default function ChartPage() {
 
   return (
     <div className="flex flex-col h-full overflow-auto pb-4">
+      {/* 查看范围筛选: 整体 / 我 / 圈子各成员 */}
+      {scopeOptions.length > 1 && (
+        <div className="flex gap-2 px-4 py-2 border-b border-gray-100 dark:border-gray-800 overflow-x-auto shrink-0">
+          {scopeOptions.map(o => (
+            <button key={o.key} onClick={() => setScope(o.key)}
+              className={`px-3 py-1 rounded-full text-xs whitespace-nowrap font-medium ${scope === o.key
+                ? 'bg-yellow-400 text-black'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'}`}>
+              {o.name}
+            </button>
+          ))}
+        </div>
+      )}
       {/* 结余 */}
       <div className="text-center py-4 border-b border-gray-100">
-        <div className="text-sm text-gray-400">本月结余</div>
+        <div className="text-sm text-gray-400">{scope === 'all' ? '本月结余' : `${activeName} · 本月结余`}</div>
         <div className={`text-3xl font-bold mt-1 ${stats.balance >= 0 ? 'text-green-500' : 'text-red-500'}`}>
           ¥{(stats.balance / 100).toFixed(2)}
         </div>
@@ -116,7 +183,7 @@ export default function ChartPage() {
                 style={{ width: `${budgetPercent}%` }} />
             </div>
             <div className="text-xs text-gray-400 mt-1">
-              已用 ¥{(stats.totalExpense / 100).toFixed(0)} / ¥{(budget / 100).toFixed(0)}（{budgetPercent.toFixed(0)}%）
+              已用 ¥{(allExpense / 100).toFixed(0)} / ¥{(budget / 100).toFixed(0)}（{budgetPercent.toFixed(0)}%）
             </div>
           </div>
         ) : null}

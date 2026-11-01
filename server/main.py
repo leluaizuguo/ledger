@@ -1,14 +1,25 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import time
+import os
 
 from database import get_db, init_db, gen_invite_code
 from auth import hash_password, verify_password, create_token, get_current_user
 
 app = FastAPI(title="Ledger Sync")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def no_cache_404(request: Request, call_next):
+    response = await call_next(request)
+    if response.status_code == 404:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 @app.on_event("startup")
@@ -351,6 +362,14 @@ def sync_pull(since: float = 0, device_id: str = "", user=Depends(get_current_us
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# --- Static files (PWA frontend) ---
+# Dist built with base='/ledger/' for GitHub Pages compatibility
+DIST_DIR = os.path.join(os.path.dirname(__file__), "..", "dist")
+if os.path.isdir(DIST_DIR):
+    app.mount("/ledger/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
+    app.mount("/ledger", StaticFiles(directory=DIST_DIR, html=True), name="static")
 
 
 if __name__ == "__main__":

@@ -24,3 +24,8 @@ Thumbs.db
 # Server binaries and data
 server/*.exe
 server/*.db*
+
+# Runtime state & logs
+server/.server_pids
+server/*.log
+*.tsbuildinfo

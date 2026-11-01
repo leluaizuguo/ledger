@@ -221,10 +221,16 @@ export const useStore = create<LedgerState>((set, get) => ({
             existing.note !== rb.note ||
             existing.date !== rb.date
           if (differs && existing.updatedAt && rb.updatedAt && rb.updatedAt > existing.updatedAt) {
-            // Remote is newer but data differs → conflict
+            // Remote is genuinely newer and data differs → real conflict (user resolves)
             newConflicts.push({ client_id: rb.client_id!, local: { ...existing }, remote: { ...rb } })
-          } else if (!differs || !existing.updatedAt || (rb.updatedAt && rb.updatedAt <= existing.updatedAt)) {
-            // No conflict: data same, or local is newer, or local has no timestamp
+          } else if (differs) {
+            // Data differs but remote is NOT newer than local — race: this cycle's push
+            // snapshot predated a local edit, so the pull returned stale data.
+            // Keep local untouched; the next push cycle propagates the local edit.
+            // (Never overwrite a newer local change with stale server data.)
+          } else {
+            // Data identical → mirror server fields (display_name etc.), keep local
+            // timestamp if present so it never gets downgraded
             await db.bills.update(existing.id!, { ...rb, id: existing.id, updatedAt: existing.updatedAt || rb.updatedAt })
           }
         } else {

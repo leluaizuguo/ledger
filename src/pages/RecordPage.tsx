@@ -18,6 +18,7 @@ export default function RecordPage() {
   const [splitPay, setSplitPay] = useState(false)
   const [account2, setAccount2] = useState('cash')
   const [amount2Fen, setAmount2Fen] = useState(0)
+  const [recordDate, setRecordDate] = useState(getTodayISO())
 
   const categories = billType === 'expense' ? expenseCategories : incomeCategories
 
@@ -37,18 +38,19 @@ export default function RecordPage() {
     await addBillRecord({
       amount: amountFen, type: billType, categoryId, accountId,
       note: note.trim() || categories.find(c => c.id === categoryId)?.name || '',
-      date: getTodayISO(), isReimbursable, imageData: imageData || undefined,
+      date: recordDate, isReimbursable, imageData: imageData || undefined,
     })
     if (splitPay && amount2Fen > 0 && account2 !== accountId) {
       await addBillRecord({
         amount: amount2Fen, type: billType, categoryId, accountId: account2,
         note: (note.trim() || categories.find(c => c.id === categoryId)?.name || '') + '(组合)',
-        date: getTodayISO(), isReimbursable,
+        date: recordDate, isReimbursable,
       })
     }
     setShowCategory(false); setCategoryId(null); setAmountFen(0)
     setNote(''); setIsReimbursable(false); setImageData('')
     setSplitPay(false); setAmount2Fen(0); setAccount2('cash')
+    setRecordDate(getTodayISO())
   }
 
   const handleSaveAsTemplate = async () => {
@@ -97,7 +99,9 @@ export default function RecordPage() {
         <div className="flex flex-col h-full px-4 pt-4">
           <div className="text-center mb-4">
             <div className="text-3xl font-bold">¥{(amountFen / 100).toFixed(2)}</div>
-            <div className="text-sm text-gray-400 mt-1">{new Date().toLocaleDateString('zh-CN')}</div>
+            <input type="date" value={recordDate} onChange={e => setRecordDate(e.target.value)}
+              className="text-sm text-gray-400 mt-1 bg-transparent border-none outline-none text-center"
+              style={{ colorScheme: 'light' }} />
           </div>
           <input type="text" placeholder="添加备注..." value={note}
             onChange={e => setNote(e.target.value)}
