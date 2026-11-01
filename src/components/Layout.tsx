@@ -17,7 +17,7 @@ const tabs = [
 export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { addBillRecord, expenseCategories, incomeCategories, syncStatus, currentUser, loadUser, initSync, teardownSync, loadCustomCats } = useStore()
+  const { addBillRecord, expenseCategories, incomeCategories, syncStatus, currentUser, loadUser, initSync, teardownSync, loadCustomCats, clearForeign } = useStore()
   const [isListening, setIsListening] = useState(false)
   const [voiceText, setVoiceText] = useState('')
   const [voiceError, setVoiceError] = useState('')
@@ -154,7 +154,7 @@ export default function Layout() {
         <div className="flex items-center gap-2">
           {currentUser && <span className="text-xs text-gray-500">{currentUser.display_name}</span>}
           {isLoggedIn() ? (
-            <button onClick={logout} className="text-xs text-gray-400 hover:text-red-500">退出</button>
+            <button onClick={async () => { await clearForeign(); logout() }} className="text-xs text-gray-400 hover:text-red-500">退出</button>
           ) : (
             <button onClick={() => navigate('/login')} className="text-xs text-blue-500 hover:text-blue-700">登录同步</button>
           )}
@@ -173,6 +173,7 @@ export default function Layout() {
               if (!confirm('退出当前圈子？你的账单会保留，但不再与其他人共享。')) return
               try {
                 const ng = await leaveGroup()
+                await clearForeign()
                 setGroup(ng)
                 window.location.reload()
               } catch (e: any) { alert(e.message || '退出失败') }
@@ -185,7 +186,8 @@ export default function Layout() {
           <button onClick={() => {
             const code = prompt('输入邀请码加入新圈子：')
             if (!code) return
-            joinGroup(code).then(ng => {
+            joinGroup(code).then(async ng => {
+              await clearForeign()
               setGroup(ng)
               window.location.reload()
             }).catch((e: any) => alert(e.message || '加入失败'))

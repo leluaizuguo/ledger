@@ -9,6 +9,8 @@ class LedgerDB extends Dexie {
   recurrings!: Table<RecurringBill, number>
   installments!: Table<Installment, number>
   custom_cats!: Table<Category, string>
+  // 圈子内其他成员的账单缓存（主键 client_id）。独立表，永不参与 push。
+  foreign_bills!: Table<Bill, string>
 
   constructor() {
     super('ledger')
@@ -62,6 +64,18 @@ class LedgerDB extends Dexie {
       recurrings: '++id, active',
       installments: '++id, billId',
       custom_cats: 'id, type',
+    })
+
+    // V6: 圈子账单离线缓存（他人账单落库，离线也能查看）
+    this.version(6).stores({
+      bills: '++id, client_id, user_id, type, categoryId, accountId, date, amount, createdAt, updatedAt',
+      accounts: 'id, type',
+      budgets: '++id, month, categoryId',
+      templates: '++id, type',
+      recurrings: '++id, active',
+      installments: '++id, billId',
+      custom_cats: 'id, type',
+      foreign_bills: 'client_id, date, user_id, createdAt',
     })
   }
 }
@@ -168,6 +182,26 @@ export function popPendingDeletes(): string[] {
 
 export async function getAllBills(): Promise<Bill[]> {
   return db.bills.orderBy('createdAt').reverse().toArray()
+}
+
+// === Foreign (圈子成员) bill cache ===
+// 他人的账单只读不推送：独立表，避免混进 getAllBills() 被 push 成自己的账单。
+export async function getForeignBills(): Promise<Bill[]> {
+  return db.foreign_bills.toArray()
+}
+
+/** 全量替换：pull 是全量拉取，用它保证本地缓存与服务器一致（他人删掉的账单自然消失） */
+export async function replaceForeignBills(bills: Bill[]): Promise<void> {
+  const rows = bills.filter(b => !!b.client_id)
+  await db.transaction('rw', db.foreign_bills, async () => {
+    await db.foreign_bills.clear()
+    if (rows.length > 0) await db.foreign_bills.bulkPut(rows)
+  })
+}
+
+/** 退圈 / 换圈子 / 登出时清空，避免看到上一个圈子的账单 */
+export async function clearForeignBills(): Promise<void> {
+  await db.foreign_bills.clear()
 }
 
 // === Account helpers ===

@@ -9,6 +9,7 @@ import {
   getInstallments, createInstallment,
   getDueRecurrings, getAllBills, db,
   getCustomCats, addCustomCat, deleteCustomCat,
+  getForeignBills, replaceForeignBills, clearForeignBills,
 } from '../db'
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from '../data/categories'
 import { getUser } from '../utils/api'
@@ -67,6 +68,8 @@ interface LedgerState {
   deviceId: string
   initSync: () => void
   teardownSync: () => void
+  loadForeign: () => Promise<void>
+  clearForeign: () => Promise<void>
   loadUser: () => void
 }
 
@@ -83,7 +86,7 @@ export const useStore = create<LedgerState>((set, get) => ({
     } else {
       bills = await getBillsByMonth(currentMonth)
     }
-    // Merge foreign bills (from server, not stored in Dexie) when logged in
+    // Merge foreign bills (cached in IndexedDB) when logged in
     if (currentUser && foreignBills.length > 0) {
       const merged = [...bills]
       for (const fb of foreignBills) {
@@ -240,16 +243,35 @@ export const useStore = create<LedgerState>((set, get) => ({
       if (newConflicts.length > 0) {
         set(s => ({ syncConflicts: [...s.syncConflicts, ...newConflicts] }))
       }
-      // Foreign bills stay in-memory only
-      set({ foreignBills: foreign })
+      // Foreign bills: 落 IndexedDB 缓存，离线/服务器断开时仍可查看
+      const cacheable = foreign.filter(f => !!f.client_id)
+      try {
+        await replaceForeignBills(cacheable)
+      } catch (e) {
+        console.error('Failed to cache foreign bills:', e)
+      }
+      set({ foreignBills: cacheable })
       await get().loadBills()
       get().triggerRefresh()
     }
+    // 先用本地缓存填充圈子账单（不等网络，离线也有数据）
+    get().loadForeign().catch(e => console.error('loadForeign failed:', e))
     startSync(getLocalBills, saveRemote)
   },
   teardownSync: () => {
     stopSync()
     set({ foreignBills: [] })
+  },
+  loadForeign: async () => {
+    const cached = await getForeignBills()
+    console.log('[ledger] 圈子账单缓存已加载:', cached.length, '条')
+    set({ foreignBills: cached })
+    await get().loadBills()
+  },
+  clearForeign: async () => {
+    await clearForeignBills()
+    set({ foreignBills: [] })
+    await get().loadBills()
   },
   loadUser: () => { const u = getUser(); set({ currentUser: u }) },
 }))

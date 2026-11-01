@@ -1,4 +1,4 @@
-# 记账 — 开发文档 v0.10.0
+# 记账 — 开发文档 v0.11.0
 
 ## 技术栈
 
@@ -69,7 +69,7 @@ src/
 - 同步间隔 3 秒，全量 push + pull
 - **竞态保护**：push 开始时记录时间戳，pull 后删除本地多余账单时跳过 push 之后新增的记录
 
-## 数据库 Schema (Dexie v5)
+## 数据库 Schema (Dexie v6)
 
 ```typescript
 bills: '++id, type, categoryId, accountId, date, amount, createdAt, updatedAt, client_id, user_id'
@@ -79,6 +79,7 @@ templates: '++id, type'
 recurrings: '++id, active'
 installments: '++id, billId'
 custom_cats: 'id, type'
+foreign_bills: 'client_id, date, user_id, createdAt'   // 圈子他人账单缓存，只读，永不参与 push
 ```
 
 - **金额存储**: 整数分（fen），显示时 /100 转元
@@ -86,6 +87,7 @@ custom_cats: 'id, type'
 - **client_id**: 本地生成 UUID，用于跨设备去重
 - **updatedAt**: Unix 时间戳（秒），每次修改/同步更新，用于冲突检测和竞态保护
 - **createdAt**: Unix 时间戳（毫秒），服务端同步现在返回 `created_at` 用于正确排序
+- **foreign_bills**: 圈子内其他成员的账单缓存。独立表，主键 client_id。pull 成功后整体替换（`replaceForeignBills`），启动时先读它填 UI，因此**离线/服务器断掉也能看到圈子账单**。退圈/换圈/登出时清空。
 
 服务端 SQLite 表：
 ```sql
@@ -122,6 +124,7 @@ npm run deploy       # 部署到 GitHub Pages
 
 | 版本 | 更新 |
 |------|------|
+| v0.11.0 | 圈子账单离线可见：他人账单落 IndexedDB（Dexie v6 新增 foreign_bills 表），启动时先读缓存再联网；同步过一次后断网/服务器宕机也能看到全部账单 |
 | v0.10.0 | 图表分析新增查看范围筛选：整体/我/圈子各成员，结余/趋势/饼图/排行按人统计，预算保持家庭口径 |
 | v0.9.2 | 修复长按修改后偶发回退：saveRemote 合并不再用旧远端数据覆盖更新过的本地（同步竞态） |
 | v0.9.1 | 账单按日期整体排序（自己/他人混排）；服务端返回 created_at 修复排序 |
