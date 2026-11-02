@@ -1,4 +1,4 @@
-# 记账 — 开发文档 v0.12.0
+# 记账 — 开发文档 v0.12.1
 
 ## 技术栈
 
@@ -129,6 +129,7 @@ npm run deploy       # 部署到 GitHub Pages
 
 | 版本 | 更新 |
 |------|------|
+| v0.12.1 | 修复图标 404：index.html 的 favicon 指向不存在的 /vite.svg，manifest 的 icons 用了根路径 /logo-*.png。统一改成相对路径（站点部署在 /ledger/ 子路径下），share_target 的 action 同步改为 #/record |
 | v0.12.0 | 同步合并为单次请求：`POST /api/sync` 一次完成 push+pull，去掉 healthCheck 预检，圈子信息改为每 10 轮刷新。高延迟链路上同步耗时降到约 1/3 |
 | v0.11.1 | 修复顶部同步状态不显示「离线」：syncStatus=offline 时圆点转橙色、文字显示离线（原来 idle/offline 都显示在线） |
 | v0.11.0 | 圈子账单离线可见：他人账单落 IndexedDB（Dexie v6 新增 foreign_bills 表），启动时先读缓存再联网；同步过一次后断网/服务器宕机也能看到全部账单 |
